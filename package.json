@@ -1,0 +1,9 @@
+{
+  "name": "scheduling-algorithms",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:standalone": "node scripts/build-standalone.mjs",
+    "test": "npm run build:standalone && node tests/algorithms.test.mjs"
+  }
+}
