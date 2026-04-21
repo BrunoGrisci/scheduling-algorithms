@@ -17,7 +17,7 @@ A ferramenta foi construída para uso em sala de aula e torna visíveis as decis
 
 Ela segue os requisitos do projeto em `instructions.md` e as referências técnicas em `refs/`, especialmente o Capítulo 4 de *Algorithm Design*, de Jon Kleinberg e Éva Tardos.
 
-🔗 **Destino do GitHub Pages:** https://brunogrisci.github.io/scheduling-algorithms/  
+🔗 **Destino do GitHub Pages:** https://brunogrisci.github.io/schedulingalgorithms
 🔗 **Repositório GitHub:** https://github.com/BrunoGrisci/scheduling-algorithms
 
 ![Visão geral da ferramenta scheduling-algorithms](docs/screenshots/overview2.png)

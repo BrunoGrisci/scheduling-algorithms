@@ -17,7 +17,7 @@ The tool was built for classroom use and makes the algorithmic decisions visible
 
 It follows the project requirements in `instructions.md` and the technical references in `refs/`, especially Chapter 4 of *Algorithm Design* by Jon Kleinberg and Éva Tardos.
 
-🔗 **GitHub Pages target:** https://brunogrisci.github.io/scheduling-algorithms/  
+🔗 **GitHub Pages target:** https://brunogrisci.github.io/schedulingalgorithms  
 🔗 **GitHub repository:** https://github.com/BrunoGrisci/scheduling-algorithms
 
 ![Overview of the scheduling-algorithms webtool](docs/screenshots/overview2.png)
