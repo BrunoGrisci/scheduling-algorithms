@@ -20,7 +20,7 @@ Ela segue os requisitos do projeto em `instructions.md` e as referências técni
 🔗 **Destino do GitHub Pages:** https://brunogrisci.github.io/scheduling-algorithms/  
 🔗 **Repositório GitHub:** https://github.com/BrunoGrisci/scheduling-algorithms
 
-![Visão geral da ferramenta scheduling-algorithms](docs/screenshots/overview.png)
+![Visão geral da ferramenta scheduling-algorithms](docs/screenshots/overview2.png)
 
 ---
 

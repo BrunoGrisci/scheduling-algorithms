@@ -20,7 +20,7 @@ It follows the project requirements in `instructions.md` and the technical refer
 🔗 **GitHub Pages target:** https://brunogrisci.github.io/scheduling-algorithms/  
 🔗 **GitHub repository:** https://github.com/BrunoGrisci/scheduling-algorithms
 
-![Overview of the scheduling-algorithms webtool](docs/screenshots/overview.png)
+![Overview of the scheduling-algorithms webtool](docs/screenshots/overview2.png)
 
 ---
 
