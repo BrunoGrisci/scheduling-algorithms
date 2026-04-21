@@ -45,10 +45,12 @@ It follows the project requirements in `instructions.md` and the technical refer
   - compatible / rejected intervals for interval scheduling,
   - room allocation for interval partitioning,
   - scheduled jobs, deadlines, and lateness for maximum lateness.
-  - cache contents, hits, misses, evictions, and request progression for the caching problems.
+  - cache contents, hits, misses, evictions, request progression, and a per-step eviction strip for the caching problems.
 - **Graph view**:
   - conflict graph for interval problems,
   - inversion graph for maximum lateness.
+  - optional node-area scaling proportional to interval length in conflict graphs.
+  - optional time-axis mode that places conflict-graph nodes at `(s_i, f_i)` on equal start/finish time axes.
 - No graph tab for caching problems, as required by the updated specification.
 - **Proof view** for the three correct greedy algorithms:
   - **stays ahead** for earliest-finish-time-first interval scheduling,
@@ -65,6 +67,10 @@ It follows the project requirements in `instructions.md` and the technical refer
 - Direct manipulation on interval views:
   - drag intervals vertically in interval scheduling and interval partitioning,
   - drag jobs horizontally in maximum lateness, while deadline markers stay fixed at their times.
+- Direct manipulation on free-layout conflict graphs:
+  - drag nodes to reorganize the graph,
+  - keep edges attached to their corresponding nodes,
+  - automatically disable dragging in time-axis mode.
 - In-page **help modal** and **references modal**.
 - Fully client-side, with no backend or external framework.
 
@@ -156,6 +162,7 @@ Browser validation was also used to confirm:
 - settings rail collapse / restore,
 - teaching-board zoom behavior,
 - interval and job dragging,
+- conflict-graph toggles for size scaling and time-axis placement,
 - cache-step rendering and miss counters,
 - proof tab rendering,
 - auto-run behavior.

@@ -128,6 +128,10 @@ const state = {
       interval: 1,
       graph: 1,
     },
+    graphOptions: {
+      sizeByLength: false,
+      timeAxis: false,
+    },
     offsets: {
       intervalScheduling: {},
       intervalPartitioning: {},
@@ -316,14 +320,21 @@ function scheduleBoardSync() {
 
 function updateBoardOffset(problemId, layoutKey, itemId, axis, value) {
   const current = getBoardOffset(problemId, layoutKey, itemId);
+  const nextOffset =
+    axis === "xy"
+      ? {
+          x: value.x ?? current.x ?? 0,
+          y: value.y ?? current.y ?? 0,
+        }
+      : {
+          x: axis === "x" ? value : current.x ?? 0,
+          y: axis === "y" ? value : current.y ?? 0,
+        };
   state.board.offsets[problemId] = {
     ...state.board.offsets[problemId],
     [layoutKey]: {
       ...(state.board.offsets[problemId]?.[layoutKey] ?? {}),
-      [itemId]: {
-        x: axis === "x" ? value : current.x ?? 0,
-        y: axis === "y" ? value : current.y ?? 0,
-      },
+      [itemId]: nextOffset,
     },
   };
 }
@@ -368,10 +379,20 @@ function onBoardPointerMove(event) {
   }
 
   const drag = state.board.drag;
-  const deltaPixels = drag.axis === "x" ? event.clientX - drag.startClient : event.clientY - drag.startClient;
-  const deltaUnits = deltaPixels * drag.unitsPerPixel;
-  const nextValue = Math.max(drag.minOffset, Math.min(drag.maxOffset, drag.startOffset + deltaUnits));
-  updateBoardOffset(drag.problemId, drag.layoutKey, drag.itemId, drag.axis, nextValue);
+  if (drag.axis === "xy") {
+    const deltaPixelsX = event.clientX - drag.startClientX;
+    const deltaPixelsY = event.clientY - drag.startClientY;
+    const deltaUnitsX = deltaPixelsX * drag.unitsPerPixelX;
+    const deltaUnitsY = deltaPixelsY * drag.unitsPerPixelY;
+    const nextX = Math.max(drag.minOffsetX, Math.min(drag.maxOffsetX, drag.startOffsetX + deltaUnitsX));
+    const nextY = Math.max(drag.minOffsetY, Math.min(drag.maxOffsetY, drag.startOffsetY + deltaUnitsY));
+    updateBoardOffset(drag.problemId, drag.layoutKey, drag.itemId, drag.axis, { x: nextX, y: nextY });
+  } else {
+    const deltaPixels = drag.axis === "x" ? event.clientX - drag.startClient : event.clientY - drag.startClient;
+    const deltaUnits = deltaPixels * drag.unitsPerPixel;
+    const nextValue = Math.max(drag.minOffset, Math.min(drag.maxOffset, drag.startOffset + deltaUnits));
+    updateBoardOffset(drag.problemId, drag.layoutKey, drag.itemId, drag.axis, nextValue);
+  }
   render();
 }
 
@@ -401,17 +422,35 @@ function beginBoardDrag(event) {
   }
 
   const currentOffset = getBoardOffset(problemId, layoutKey, itemId);
-  state.board.drag = {
-    axis,
-    problemId,
-    layoutKey,
-    itemId,
-    startClient: axis === "x" ? event.clientX : event.clientY,
-    startOffset: axis === "x" ? currentOffset.x ?? 0 : currentOffset.y ?? 0,
-    unitsPerPixel: axis === "x" ? viewBox.width / svgRect.width : viewBox.height / svgRect.height,
-    minOffset: Number(handle.dataset.minOffset ?? -Infinity),
-    maxOffset: Number(handle.dataset.maxOffset ?? Infinity),
-  };
+  state.board.drag =
+    axis === "xy"
+      ? {
+          axis,
+          problemId,
+          layoutKey,
+          itemId,
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          startOffsetX: currentOffset.x ?? 0,
+          startOffsetY: currentOffset.y ?? 0,
+          unitsPerPixelX: viewBox.width / svgRect.width,
+          unitsPerPixelY: viewBox.height / svgRect.height,
+          minOffsetX: Number(handle.dataset.minXOffset ?? -Infinity),
+          maxOffsetX: Number(handle.dataset.maxXOffset ?? Infinity),
+          minOffsetY: Number(handle.dataset.minYOffset ?? -Infinity),
+          maxOffsetY: Number(handle.dataset.maxYOffset ?? Infinity),
+        }
+      : {
+          axis,
+          problemId,
+          layoutKey,
+          itemId,
+          startClient: axis === "x" ? event.clientX : event.clientY,
+          startOffset: axis === "x" ? currentOffset.x ?? 0 : currentOffset.y ?? 0,
+          unitsPerPixel: axis === "x" ? viewBox.width / svgRect.width : viewBox.height / svgRect.height,
+          minOffset: Number(handle.dataset.minOffset ?? -Infinity),
+          maxOffset: Number(handle.dataset.maxOffset ?? Infinity),
+        };
 
   document.body.classList.add("is-dragging-board");
   event.preventDefault();
@@ -756,6 +795,15 @@ function toggleSettingsPanel() {
   applySettingsCollapsed();
 }
 
+function toggleGraphOption(option) {
+  if (!Object.hasOwn(state.board.graphOptions, option)) {
+    return;
+  }
+  stopBoardDrag();
+  state.board.graphOptions[option] = !state.board.graphOptions[option];
+  render();
+}
+
 function openModal(modal) {
   modal.hidden = false;
 }
@@ -815,6 +863,11 @@ function bindEvents() {
   });
 
   elements.viewHost.addEventListener("click", (event) => {
+    const graphToggle = event.target.closest("[data-graph-toggle]")?.dataset.graphToggle;
+    if (graphToggle) {
+      toggleGraphOption(graphToggle);
+      return;
+    }
     const zoomAction = event.target.closest("[data-zoom-action]")?.dataset.zoomAction;
     if (zoomAction) {
       handleBoardZoom(zoomAction);

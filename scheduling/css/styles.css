@@ -580,12 +580,45 @@ input[type="file"] {
   min-width: 0;
 }
 
+.board-tools-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
 .board-hint,
 .board-note {
   margin: 0;
   color: var(--muted);
   font-size: 0.86rem;
   line-height: 1.35;
+}
+
+.graph-toggle-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  padding: 0.35rem;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-strong) 94%, var(--bg-soft));
+}
+
+.graph-toggle-btn {
+  min-width: auto;
+  padding: 0.48rem 0.9rem;
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.graph-toggle-btn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
 }
 
 .zoom-panel {
@@ -1125,6 +1158,50 @@ rect.interval-bar.partition-preview.partition-ghost {
   letter-spacing: 0.02em;
 }
 
+.cache-evictions-label {
+  font-size: 17px;
+  opacity: 0.92;
+}
+
+.cache-eviction-index {
+  fill: var(--muted);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cache-eviction-chip {
+  fill: color-mix(in srgb, var(--surface-strong) 92%, var(--bg-soft));
+  stroke: color-mix(in srgb, var(--line-strong) 84%, transparent);
+  stroke-width: 1.8;
+  transition: fill 160ms ease, stroke 160ms ease, opacity 160ms ease;
+}
+
+.cache-eviction-chip.cache-eviction-pending {
+  opacity: 0.34;
+}
+
+.cache-eviction-chip.cache-eviction-none {
+  fill: color-mix(in srgb, var(--surface-strong) 96%, var(--accent-soft) 4%);
+}
+
+.cache-eviction-chip.cache-eviction-actual {
+  fill: color-mix(in srgb, var(--warm-soft) 72%, var(--surface-strong));
+  stroke: color-mix(in srgb, var(--accent) 72%, var(--text) 28%);
+}
+
+.cache-eviction-chip.cache-eviction-current {
+  stroke: var(--current);
+  stroke-width: 3;
+}
+
+.cache-eviction-value {
+  fill: var(--text);
+  font-family: var(--font-body);
+  font-size: 18px;
+  font-weight: 800;
+}
+
 .cache-metric-chip {
   fill: color-mix(in srgb, var(--surface-strong) 92%, var(--accent-soft));
   stroke: color-mix(in srgb, var(--line-strong) 84%, transparent);
@@ -1162,6 +1239,10 @@ rect.interval-bar.partition-preview.partition-ghost {
 
 .drag-x {
   cursor: ew-resize;
+}
+
+.drag-xy {
+  cursor: move;
 }
 
 .room-color-1 {
@@ -1209,6 +1290,32 @@ rect.interval-bar.partition-preview.partition-ghost {
   stroke: color-mix(in srgb, var(--accent) 84%, var(--text) 16%);
   stroke-width: 2.4;
   opacity: 0.72;
+}
+
+.graph-axis-line {
+  stroke: color-mix(in srgb, var(--line-strong) 92%, var(--text) 8%);
+  stroke-width: 2;
+}
+
+.graph-plot-frame {
+  fill: color-mix(in srgb, var(--surface-strong) 92%, transparent);
+  stroke: color-mix(in srgb, var(--line) 84%, transparent);
+  stroke-width: 1.6;
+}
+
+.graph-diagonal {
+  stroke: color-mix(in srgb, var(--accent) 44%, transparent);
+  stroke-width: 1.6;
+  stroke-dasharray: 8 8;
+  opacity: 0.7;
+}
+
+.graph-axis-title {
+  fill: var(--accent-strong);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
 .graph-node {

@@ -1727,6 +1727,13 @@
         zoom_out_label: "Zoom out",
         zoom_reset_label: "Reset zoom to fit",
         zoom_fit_btn: "Fit",
+        graph_controls_label: "Graph rendering controls",
+        graph_toggle_size: "Area ∝ length",
+        graph_toggle_time_axis: "Time axis",
+        graph_hint_drag_nodes: "Drag graph nodes to reorganize the picture.",
+        graph_note_time_axis_coordinates: "Time-axis mode plots each node at (s_i, f_i) on equal time scales and locks dragging.",
+        graph_axis_start: "Start time s_i",
+        graph_axis_finish: "Finish time f_i",
         board_hint_drag_vertical: "Drag intervals up or down to reorganize the picture.",
         board_hint_drag_horizontal: "Drag jobs left or right while the deadline markers stay fixed.",
         details_kicker: "Supporting panels",
@@ -1955,6 +1962,7 @@
         cache_request_stream: "Reference stream",
         cache_future_queue: "Future queue",
         cache_incoming_request: "Incoming request",
+        cache_evictions_label: "Evictions",
         cache_contents_label: "Cache contents",
         cache_misses_label: "Misses: {value}",
         cache_hits_label: "Hits: {value}",
@@ -2094,6 +2102,13 @@
         zoom_out_label: "Reduzir",
         zoom_reset_label: "Redefinir o zoom para caber",
         zoom_fit_btn: "Ajustar",
+        graph_controls_label: "Controles de renderização do grafo",
+        graph_toggle_size: "Área ∝ comprimento",
+        graph_toggle_time_axis: "Eixo do tempo",
+        graph_hint_drag_nodes: "Arraste os nós do grafo para reorganizar o desenho.",
+        graph_note_time_axis_coordinates: "O modo com eixo do tempo posiciona cada nó em (s_i, f_i), em escalas iguais, e bloqueia o arraste.",
+        graph_axis_start: "Tempo inicial s_i",
+        graph_axis_finish: "Tempo final f_i",
         board_hint_drag_vertical: "Arraste os intervalos para cima ou para baixo para reorganizar o desenho.",
         board_hint_drag_horizontal: "Arraste os jobs para a esquerda ou para a direita enquanto os marcadores de deadline permanecem fixos.",
         details_kicker: "Painéis de apoio",
@@ -2322,6 +2337,7 @@
         cache_request_stream: "Fluxo de referências",
         cache_future_queue: "Fila futura",
         cache_incoming_request: "Nova requisição",
+        cache_evictions_label: "Evicções",
         cache_contents_label: "Conteúdo do cache",
         cache_misses_label: "Faltas: {value}",
         cache_hits_label: "Acertos: {value}",
@@ -2826,6 +2842,20 @@
       return padding + ((value - bounds.min) / (bounds.max - bounds.min)) * (width - padding * 2);
     }
     
+    function scaleWithin(value, bounds, minScreen, maxScreen) {
+      if (bounds.max === bounds.min) {
+        return minScreen;
+      }
+      return minScreen + ((value - bounds.min) / (bounds.max - bounds.min)) * (maxScreen - minScreen);
+    }
+    
+    function yScaleUp(value, bounds, top, size) {
+      if (bounds.max === bounds.min) {
+        return top + size;
+      }
+      return top + size - ((value - bounds.min) / (bounds.max - bounds.min)) * size;
+    }
+    
     function getBoardZoom(boardState, viewMode) {
       return boardState?.zoom?.[viewMode] ?? 1;
     }
@@ -2834,7 +2864,42 @@
       return boardState?.offsets?.[problemId]?.[layoutKey]?.[itemId] ?? { x: 0, y: 0 };
     }
     
-    function renderBoardFigure(viewMode, legendMarkup, svgMarkup, boardState, t, hint = "", note = "") {
+    function getGraphOptions(boardState) {
+      return {
+        sizeByLength: Boolean(boardState?.graphOptions?.sizeByLength),
+        timeAxis: Boolean(boardState?.graphOptions?.timeAxis),
+      };
+    }
+    
+    function buildGraphControls(problemId, boardState, t) {
+      if (!["intervalScheduling", "intervalPartitioning"].includes(problemId)) {
+        return "";
+      }
+    
+      const options = getGraphOptions(boardState);
+      return `
+        <div class="graph-toggle-panel" role="group" aria-label="${t("graph_controls_label")}">
+          <button
+            type="button"
+            class="secondary graph-toggle-btn ${options.sizeByLength ? "active" : ""}"
+            data-graph-toggle="sizeByLength"
+            aria-pressed="${options.sizeByLength ? "true" : "false"}"
+          >
+            ${t("graph_toggle_size")}
+          </button>
+          <button
+            type="button"
+            class="secondary graph-toggle-btn ${options.timeAxis ? "active" : ""}"
+            data-graph-toggle="timeAxis"
+            aria-pressed="${options.timeAxis ? "true" : "false"}"
+          >
+            ${t("graph_toggle_time_axis")}
+          </button>
+        </div>
+      `;
+    }
+    
+    function renderBoardFigure(viewMode, legendMarkup, svgMarkup, boardState, t, hint = "", note = "", extraControls = "") {
       const zoom = Math.round(getBoardZoom(boardState, viewMode) * 100);
       return `
         <div class="board-figure" data-board-figure="${viewMode}">
@@ -2844,11 +2909,14 @@
               ${hint ? `<p class="board-hint">${hint}</p>` : ""}
               ${note ? `<p class="board-note">${note}</p>` : ""}
             </div>
-            <div class="zoom-panel" role="group" aria-label="${t("zoom_controls_label")}">
-              <button type="button" class="zoom-btn secondary" data-zoom-action="out" aria-label="${t("zoom_out_label")}">−</button>
-              <output class="zoom-readout" data-zoom-readout>${zoom}%</output>
-              <button type="button" class="zoom-btn secondary" data-zoom-action="in" aria-label="${t("zoom_in_label")}">+</button>
-              <button type="button" class="zoom-fit-btn secondary" data-zoom-action="reset" aria-label="${t("zoom_reset_label")}">${t("zoom_fit_btn")}</button>
+            <div class="board-tools-actions">
+              ${extraControls}
+              <div class="zoom-panel" role="group" aria-label="${t("zoom_controls_label")}">
+                <button type="button" class="zoom-btn secondary" data-zoom-action="out" aria-label="${t("zoom_out_label")}">−</button>
+                <output class="zoom-readout" data-zoom-readout>${zoom}%</output>
+                <button type="button" class="zoom-btn secondary" data-zoom-action="in" aria-label="${t("zoom_in_label")}">+</button>
+                <button type="button" class="zoom-fit-btn secondary" data-zoom-action="reset" aria-label="${t("zoom_reset_label")}">${t("zoom_fit_btn")}</button>
+              </div>
             </div>
           </div>
           <div class="board-stage" data-board-stage>
@@ -2870,6 +2938,90 @@
         `);
       }
       return ticks.join("");
+    }
+    
+    function getIntervalLength(item) {
+      return Math.max((item.finish ?? 0) - (item.start ?? 0), 1);
+    }
+    
+    function getGraphRadiusMap(items, sizeByLength) {
+      if (!sizeByLength) {
+        return new Map(items.map((item) => [item.id, 28]));
+      }
+    
+      const lengths = items.map(getIntervalLength);
+      const minLength = Math.min(...lengths, 1);
+      const maxLength = Math.max(...lengths, 1);
+      const minRadius = 22;
+      const maxRadius = 44;
+    
+      if (maxLength === minLength) {
+        return new Map(items.map((item) => [item.id, 32]));
+      }
+    
+      const minRoot = Math.sqrt(minLength);
+      const rootRange = Math.max(Math.sqrt(maxLength) - minRoot, 0.0001);
+      return new Map(
+        items.map((item) => {
+          const scaled = (Math.sqrt(getIntervalLength(item)) - minRoot) / rootRange;
+          const radius = minRadius + scaled * (maxRadius - minRadius);
+          return [item.id, radius];
+        }),
+      );
+    }
+    
+    function buildSquareTimeAxes(bounds, plotBox, t, tickCount = 8) {
+      const ticks = [];
+      for (let index = 0; index <= tickCount; index += 1) {
+        const value = bounds.min + ((bounds.max - bounds.min) * index) / tickCount;
+        const x = scaleWithin(value, bounds, plotBox.left, plotBox.left + plotBox.size);
+        const y = yScaleUp(value, bounds, plotBox.top, plotBox.size);
+        ticks.push(`
+          <line x1="${x}" y1="${plotBox.top}" x2="${x}" y2="${plotBox.top + plotBox.size}" class="axis-grid"></line>
+          <line x1="${plotBox.left}" y1="${y}" x2="${plotBox.left + plotBox.size}" y2="${y}" class="axis-grid"></line>
+          <text x="${x}" y="${plotBox.top + plotBox.size + 26}" class="axis-label" text-anchor="middle">${formatValue(value)}</text>
+          <text x="${plotBox.left - 12}" y="${y + 4}" class="axis-label" text-anchor="end">${formatValue(value)}</text>
+        `);
+      }
+    
+      const xAxisLabelX = plotBox.left + plotBox.size / 2;
+      const xAxisLabelY = plotBox.top + plotBox.size + 54;
+      const yAxisLabelX = plotBox.left - 58;
+      const yAxisLabelY = plotBox.top + plotBox.size / 2;
+      const diagonalStart = scaleWithin(bounds.min, bounds, plotBox.left, plotBox.left + plotBox.size);
+      const diagonalEnd = scaleWithin(bounds.max, bounds, plotBox.left, plotBox.left + plotBox.size);
+      const diagonalYStart = yScaleUp(bounds.min, bounds, plotBox.top, plotBox.size);
+      const diagonalYEnd = yScaleUp(bounds.max, bounds, plotBox.top, plotBox.size);
+    
+      return `
+        <rect x="${plotBox.left}" y="${plotBox.top}" width="${plotBox.size}" height="${plotBox.size}" class="graph-plot-frame"></rect>
+        <line x1="${plotBox.left}" y1="${plotBox.top + plotBox.size}" x2="${plotBox.left + plotBox.size}" y2="${plotBox.top + plotBox.size}" class="graph-axis-line"></line>
+        <line x1="${plotBox.left}" y1="${plotBox.top}" x2="${plotBox.left}" y2="${plotBox.top + plotBox.size}" class="graph-axis-line"></line>
+        <line x1="${diagonalStart}" y1="${diagonalYStart}" x2="${diagonalEnd}" y2="${diagonalYEnd}" class="graph-diagonal"></line>
+        ${ticks.join("")}
+        <text x="${xAxisLabelX}" y="${xAxisLabelY}" class="graph-axis-title" text-anchor="middle">${t("graph_axis_start")}</text>
+        <text x="${yAxisLabelX}" y="${yAxisLabelY}" class="graph-axis-title" text-anchor="middle" transform="rotate(-90 ${yAxisLabelX} ${yAxisLabelY})">${t("graph_axis_finish")}</text>
+      `;
+    }
+    
+    function buildDuplicateTimeJitter(items) {
+      const groups = new Map();
+      for (const item of items) {
+        const key = `${item.start}|${item.finish}`;
+        const list = groups.get(key) ?? [];
+        list.push(item);
+        groups.set(key, list);
+      }
+    
+      const jitterById = new Map();
+      for (const list of groups.values()) {
+        const sorted = [...list].sort((left, right) => left.id.localeCompare(right.id));
+        const center = (sorted.length - 1) / 2;
+        sorted.forEach((item, index) => {
+          jitterById.set(item.id, (index - center) * 14);
+        });
+      }
+      return jitterById;
     }
     
     function renderDataChips(problemId, simulation, stepState, t) {
@@ -3238,12 +3390,13 @@
       const metricGap = 30;
       const incomingWidth = 154;
       const incomingHeight = 92;
+      const evictionBoxSize = 42;
       const queueRowWidth = requests.length > 0 ? requests.length * queueBoxSize + (requests.length - 1) * queueGap : queueBoxSize;
       const cacheRowWidth = cacheSize * slotWidth + Math.max(0, cacheSize - 1) * slotGap;
       const metricsWidth = metricWidth * 2 + metricGap;
       const dominantWidth = Math.max(queueRowWidth, cacheRowWidth, metricsWidth, incomingWidth, 520);
       const width = Math.max(showFutureQueue ? 1180 : 980, dominantWidth + 360);
-      const height = showFutureQueue ? 520 : 500;
+      const height = showFutureQueue ? 640 : 660;
       const centerX = width / 2;
       const queueStart = centerX - queueRowWidth / 2;
       const cacheStart = centerX - cacheRowWidth / 2;
@@ -3251,12 +3404,16 @@
       const incomingLabelY = showFutureQueue ? null : 118;
       const incomingBoxY = showFutureQueue ? null : 146;
       const incomingValueY = showFutureQueue ? null : 203;
-      const cacheLabelY = showFutureQueue ? 248 : 284;
-      const cacheSlotsY = showFutureQueue ? 286 : 316;
-      const cacheValueY = showFutureQueue ? 338 : 369;
-      const metricY = showFutureQueue ? 412 : 420;
-      const metricLabelY = showFutureQueue ? 440 : 448;
-      const metricValueY = showFutureQueue ? 474 : 482;
+      const evictionLabelY = showFutureQueue ? 220 : 290;
+      const evictionIndexY = showFutureQueue ? 246 : 316;
+      const evictionBoxesY = showFutureQueue ? 256 : 326;
+      const evictionValueY = showFutureQueue ? 284 : 354;
+      const cacheLabelY = showFutureQueue ? 350 : 426;
+      const cacheSlotsY = showFutureQueue ? 388 : 458;
+      const cacheValueY = showFutureQueue ? 440 : 511;
+      const metricY = showFutureQueue ? 514 : 562;
+      const metricLabelY = showFutureQueue ? 542 : 590;
+      const metricValueY = showFutureQueue ? 576 : 624;
     
       const queueBoxes = showFutureQueue
         ? requests
@@ -3319,6 +3476,32 @@
         `;
       }).join("");
     
+      const evictionBoxes = requests
+        .map((_, index) => {
+          const outcome = step.state.requestOutcomes?.[index];
+          const status = getCacheRequestStatus(index, step.state);
+          const x = queueStart + index * (queueBoxSize + queueGap) + (queueBoxSize - evictionBoxSize) / 2;
+          const value = outcome ? (outcome.evicted ? escapeHtml(outcome.evicted) : "−") : "";
+          const classes = [
+            "cache-eviction-chip",
+            status === "pending" ? "cache-eviction-pending" : "",
+            status === "current" ? "cache-eviction-current" : "",
+            outcome?.evicted ? "cache-eviction-actual" : "",
+            outcome && !outcome.evicted ? "cache-eviction-none" : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+    
+          return `
+            <g>
+              <text x="${x + evictionBoxSize / 2}" y="${evictionIndexY}" text-anchor="middle" class="cache-eviction-index">${index + 1}</text>
+              <rect x="${x}" y="${evictionBoxesY}" width="${evictionBoxSize}" height="${evictionBoxSize}" rx="14" class="${classes}"></rect>
+              <text x="${x + evictionBoxSize / 2}" y="${evictionValueY}" text-anchor="middle" class="cache-eviction-value">${value || ""}</text>
+            </g>
+          `;
+        })
+        .join("");
+    
       const metricChips = [
         { x: metricsStart, label: t("state_misses"), value: misses },
         { x: metricsStart + metricWidth + metricGap, label: t("state_hits"), value: hits },
@@ -3354,6 +3537,8 @@
           <svg viewBox="0 0 ${width} ${height}" class="timeline-svg cache-svg" data-board-svg aria-label="${t("view_cache")}">
             ${showFutureQueue ? `<text x="${centerX}" y="74" class="cache-section-label" text-anchor="middle">${t("cache_future_queue")}</text>` : ""}
             ${queueBoxes}
+            <text x="${centerX}" y="${evictionLabelY}" class="cache-section-label cache-evictions-label" text-anchor="middle">${t("cache_evictions_label")}</text>
+            ${evictionBoxes}
             <text x="${centerX}" y="${cacheLabelY}" class="cache-section-label" text-anchor="middle">${t("cache_contents_label")}</text>
             ${cacheSlots}
             ${metricChips}
@@ -3384,20 +3569,55 @@
         return renderInversionGraph(simulation, step, t, boardState);
       }
     
-      const width = 820;
-      const height = 540;
-      const radius = 180;
-      const centerX = width / 2;
-      const centerY = height / 2;
+      const graphOptions = getGraphOptions(boardState);
+      const sizeByLength = graphOptions.sizeByLength;
+      const timeAxis = graphOptions.timeAxis;
       const edges = buildConflictEdges(problemId, simulation.items);
       const roomAssignments = getRoomAssignmentMap(step.state.rooms);
+      const radiusById = getGraphRadiusMap(simulation.items, sizeByLength);
+      const maxNodeRadius = Math.max(...radiusById.values(), 28);
+      const layoutKeyBase = simulation.items.map((item) => item.id).join("|");
+      const bounds = timeAxis ? buildTimelineBounds(problemId, simulation, step.state) : null;
+      const width = timeAxis ? 880 : 920;
+      const height = timeAxis ? 860 : 580;
+      const circleRadius = timeAxis ? null : Math.min(width, height) * 0.33;
+      const centerX = timeAxis ? null : width / 2;
+      const centerY = timeAxis ? null : height / 2;
+      const plotBox = timeAxis
+        ? {
+            left: 98,
+            top: 40,
+            size: 700,
+          }
+        : null;
+      const duplicateJitter = timeAxis ? buildDuplicateTimeJitter(simulation.items) : null;
+      const layoutKey = timeAxis
+        ? `graph-time|${sizeByLength ? "length" : "fixed"}|${layoutKeyBase}`
+        : `graph-free|${sizeByLength ? "length" : "fixed"}|${layoutKeyBase}`;
+    
       const nodes = simulation.items.map((item, index) => {
-        const angle = (-Math.PI / 2) + (index / Math.max(simulation.items.length, 1)) * Math.PI * 2;
-        const x = centerX + Math.cos(angle) * radius;
-        const y = centerY + Math.sin(angle) * radius;
+        const nodeRadius = radiusById.get(item.id) ?? 28;
+        const baseX = timeAxis
+          ? scaleWithin(item.start, bounds, plotBox.left, plotBox.left + plotBox.size) + (duplicateJitter.get(item.id) ?? 0)
+          : centerX + Math.cos((-Math.PI / 2) + (index / Math.max(simulation.items.length, 1)) * Math.PI * 2) * circleRadius;
+        const baseY = timeAxis
+          ? yScaleUp(item.finish, bounds, plotBox.top, plotBox.size) - (duplicateJitter.get(item.id) ?? 0)
+          : centerY + Math.sin((-Math.PI / 2) + (index / Math.max(simulation.items.length, 1)) * Math.PI * 2) * circleRadius;
+        const offset = timeAxis ? { x: 0, y: 0 } : getBoardOffset(boardState, problemId, layoutKey, item.id);
+        const x = baseX + (offset.x ?? 0);
+        const y = baseY + (offset.y ?? 0);
         const status = getStatusForItem(problemId, item.id, step.state);
         const roomId = roomAssignments.get(item.id);
-        return { ...item, x, y, status, roomId };
+        return {
+          ...item,
+          x,
+          y,
+          baseX,
+          baseY,
+          radius: nodeRadius,
+          status,
+          roomId,
+        };
       });
       const nodeById = new Map(nodes.map((node) => [node.id, node]));
     
@@ -3414,6 +3634,10 @@
             <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
           `;
     
+      const graphControls = buildGraphControls(problemId, boardState, t);
+      const graphHint = timeAxis ? "" : t("graph_hint_drag_nodes");
+      const graphNote = timeAxis ? t("graph_note_time_axis_coordinates") : "";
+    
       return renderBoardFigure(
         "graph",
         `
@@ -3423,6 +3647,7 @@
         `,
         `
           <svg viewBox="0 0 ${width} ${height}" class="graph-svg" data-board-svg aria-label="${t("view_graph")}">
+            ${timeAxis ? buildSquareTimeAxes(bounds, plotBox, t, 10) : ""}
             ${edges
               .map((edge) => {
                 const from = nodeById.get(edge.from);
@@ -3435,10 +3660,24 @@
                 (node) => {
                   const roomClass = problemId === "intervalPartitioning" && node.roomId ? getRoomColorClass(node.roomId) : `status-${node.status}`;
                   const currentClass = node.status === "current" ? " graph-node-current-ring" : "";
+                  const labelSize = Math.max(14, Math.min(node.radius * 0.72, 21));
+                  const dragData = timeAxis
+                    ? ""
+                    : `
+                      data-drag-item
+                      data-problem-id="${problemId}"
+                      data-layout-key="${layoutKey}"
+                      data-item-id="${escapeHtml(node.id)}"
+                      data-drag-axis="xy"
+                      data-min-x-offset="${node.radius + 18 - node.baseX}"
+                      data-max-x-offset="${width - node.radius - 18 - node.baseX}"
+                      data-min-y-offset="${node.radius + 18 - node.baseY}"
+                      data-max-y-offset="${height - node.radius - 18 - node.baseY}"
+                    `;
                   return `
-                  <g>
-                    <circle cx="${node.x}" cy="${node.y}" r="28" class="graph-node ${roomClass}${currentClass}"></circle>
-                    <text x="${node.x}" y="${node.y + 5}" text-anchor="middle" class="graph-label">${escapeHtml(node.id)}</text>
+                  <g class="${timeAxis ? "" : "draggable-item drag-xy"}" ${dragData}>
+                    <circle cx="${node.x}" cy="${node.y}" r="${node.radius}" class="graph-node ${roomClass}${currentClass}"></circle>
+                    <text x="${node.x}" y="${node.y + labelSize * 0.2}" text-anchor="middle" class="graph-label" style="font-size: ${labelSize}px;">${escapeHtml(node.id)}</text>
                   </g>
                 `;
                 },
@@ -3448,6 +3687,9 @@
         `,
         boardState,
         t,
+        graphHint,
+        graphNote,
+        graphControls,
       );
     }
     
@@ -4012,6 +4254,10 @@
           interval: 1,
           graph: 1,
         },
+        graphOptions: {
+          sizeByLength: false,
+          timeAxis: false,
+        },
         offsets: {
           intervalScheduling: {},
           intervalPartitioning: {},
@@ -4200,14 +4446,21 @@
     
     function updateBoardOffset(problemId, layoutKey, itemId, axis, value) {
       const current = getBoardOffset(problemId, layoutKey, itemId);
+      const nextOffset =
+        axis === "xy"
+          ? {
+              x: value.x ?? current.x ?? 0,
+              y: value.y ?? current.y ?? 0,
+            }
+          : {
+              x: axis === "x" ? value : current.x ?? 0,
+              y: axis === "y" ? value : current.y ?? 0,
+            };
       state.board.offsets[problemId] = {
         ...state.board.offsets[problemId],
         [layoutKey]: {
           ...(state.board.offsets[problemId]?.[layoutKey] ?? {}),
-          [itemId]: {
-            x: axis === "x" ? value : current.x ?? 0,
-            y: axis === "y" ? value : current.y ?? 0,
-          },
+          [itemId]: nextOffset,
         },
       };
     }
@@ -4252,10 +4505,20 @@
       }
     
       const drag = state.board.drag;
-      const deltaPixels = drag.axis === "x" ? event.clientX - drag.startClient : event.clientY - drag.startClient;
-      const deltaUnits = deltaPixels * drag.unitsPerPixel;
-      const nextValue = Math.max(drag.minOffset, Math.min(drag.maxOffset, drag.startOffset + deltaUnits));
-      updateBoardOffset(drag.problemId, drag.layoutKey, drag.itemId, drag.axis, nextValue);
+      if (drag.axis === "xy") {
+        const deltaPixelsX = event.clientX - drag.startClientX;
+        const deltaPixelsY = event.clientY - drag.startClientY;
+        const deltaUnitsX = deltaPixelsX * drag.unitsPerPixelX;
+        const deltaUnitsY = deltaPixelsY * drag.unitsPerPixelY;
+        const nextX = Math.max(drag.minOffsetX, Math.min(drag.maxOffsetX, drag.startOffsetX + deltaUnitsX));
+        const nextY = Math.max(drag.minOffsetY, Math.min(drag.maxOffsetY, drag.startOffsetY + deltaUnitsY));
+        updateBoardOffset(drag.problemId, drag.layoutKey, drag.itemId, drag.axis, { x: nextX, y: nextY });
+      } else {
+        const deltaPixels = drag.axis === "x" ? event.clientX - drag.startClient : event.clientY - drag.startClient;
+        const deltaUnits = deltaPixels * drag.unitsPerPixel;
+        const nextValue = Math.max(drag.minOffset, Math.min(drag.maxOffset, drag.startOffset + deltaUnits));
+        updateBoardOffset(drag.problemId, drag.layoutKey, drag.itemId, drag.axis, nextValue);
+      }
       render();
     }
     
@@ -4285,17 +4548,35 @@
       }
     
       const currentOffset = getBoardOffset(problemId, layoutKey, itemId);
-      state.board.drag = {
-        axis,
-        problemId,
-        layoutKey,
-        itemId,
-        startClient: axis === "x" ? event.clientX : event.clientY,
-        startOffset: axis === "x" ? currentOffset.x ?? 0 : currentOffset.y ?? 0,
-        unitsPerPixel: axis === "x" ? viewBox.width / svgRect.width : viewBox.height / svgRect.height,
-        minOffset: Number(handle.dataset.minOffset ?? -Infinity),
-        maxOffset: Number(handle.dataset.maxOffset ?? Infinity),
-      };
+      state.board.drag =
+        axis === "xy"
+          ? {
+              axis,
+              problemId,
+              layoutKey,
+              itemId,
+              startClientX: event.clientX,
+              startClientY: event.clientY,
+              startOffsetX: currentOffset.x ?? 0,
+              startOffsetY: currentOffset.y ?? 0,
+              unitsPerPixelX: viewBox.width / svgRect.width,
+              unitsPerPixelY: viewBox.height / svgRect.height,
+              minOffsetX: Number(handle.dataset.minXOffset ?? -Infinity),
+              maxOffsetX: Number(handle.dataset.maxXOffset ?? Infinity),
+              minOffsetY: Number(handle.dataset.minYOffset ?? -Infinity),
+              maxOffsetY: Number(handle.dataset.maxYOffset ?? Infinity),
+            }
+          : {
+              axis,
+              problemId,
+              layoutKey,
+              itemId,
+              startClient: axis === "x" ? event.clientX : event.clientY,
+              startOffset: axis === "x" ? currentOffset.x ?? 0 : currentOffset.y ?? 0,
+              unitsPerPixel: axis === "x" ? viewBox.width / svgRect.width : viewBox.height / svgRect.height,
+              minOffset: Number(handle.dataset.minOffset ?? -Infinity),
+              maxOffset: Number(handle.dataset.maxOffset ?? Infinity),
+            };
     
       document.body.classList.add("is-dragging-board");
       event.preventDefault();
@@ -4640,6 +4921,15 @@
       applySettingsCollapsed();
     }
     
+    function toggleGraphOption(option) {
+      if (!Object.hasOwn(state.board.graphOptions, option)) {
+        return;
+      }
+      stopBoardDrag();
+      state.board.graphOptions[option] = !state.board.graphOptions[option];
+      render();
+    }
+    
     function openModal(modal) {
       modal.hidden = false;
     }
@@ -4699,6 +4989,11 @@
       });
     
       elements.viewHost.addEventListener("click", (event) => {
+        const graphToggle = event.target.closest("[data-graph-toggle]")?.dataset.graphToggle;
+        if (graphToggle) {
+          toggleGraphOption(graphToggle);
+          return;
+        }
         const zoomAction = event.target.closest("[data-zoom-action]")?.dataset.zoomAction;
         if (zoomAction) {
           handleBoardZoom(zoomAction);

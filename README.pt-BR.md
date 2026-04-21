@@ -45,10 +45,12 @@ Ela segue os requisitos do projeto em `instructions.md` e as referências técni
   - intervalos compatíveis / rejeitados para escalonamento de intervalos,
   - alocação em salas para particionamento,
   - tarefas escalonadas, deadlines e atrasos para atraso máximo.
-  - conteúdo do cache, acertos, faltas, remoções e avanço das requisições nos problemas de caching.
+  - conteúdo do cache, acertos, faltas, remoções, avanço das requisições e uma faixa de evicções por passo nos problemas de caching.
 - **Visualização em grafo**:
   - grafo de conflitos para problemas de intervalos,
   - grafo de inversões para atraso máximo.
+  - escalonamento opcional da área dos nós proporcional ao comprimento do intervalo nos grafos de conflito.
+  - modo opcional com eixo do tempo que posiciona os nós do grafo de conflito em `(s_i, f_i)`, com eixos iguais para início e fim.
 - Sem aba de grafo para os problemas de cache, como exigido pela especificação atualizada.
 - **Visualização das provas** para os três algoritmos corretos:
   - **fica à frente** para `TerminaMaisCedo`,
@@ -65,6 +67,10 @@ Ela segue os requisitos do projeto em `instructions.md` e as referências técni
 - Manipulação direta nas visualizações de intervalos:
   - arrastar intervalos verticalmente em escalonamento de intervalos e particionamento,
   - arrastar jobs horizontalmente em atraso máximo, enquanto os marcadores de deadline permanecem fixos nos seus tempos.
+- Manipulação direta no grafo de conflitos em layout livre:
+  - arrastar nós para reorganizar o grafo,
+  - manter as arestas presas aos nós correspondentes,
+  - desabilitar automaticamente o arraste no modo com eixo do tempo.
 - **Modal de ajuda** e **modal de referências** dentro da própria página.
 - Totalmente no cliente, sem backend e sem framework externo.
 
@@ -156,6 +162,7 @@ Também foi usada validação no navegador para confirmar:
 - colapso e restauração do painel lateral,
 - comportamento do zoom no quadro didático,
 - arraste de intervalos e jobs,
+- toggles do grafo de conflitos para escala por tamanho e posicionamento no eixo do tempo,
 - renderização passo a passo do cache e do contador de faltas,
 - renderização da aba de provas,
 - comportamento da execução automática.
