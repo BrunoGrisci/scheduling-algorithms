@@ -3243,11 +3243,20 @@
       const metricsWidth = metricWidth * 2 + metricGap;
       const dominantWidth = Math.max(queueRowWidth, cacheRowWidth, metricsWidth, incomingWidth, 520);
       const width = Math.max(showFutureQueue ? 1180 : 980, dominantWidth + 360);
-      const height = showFutureQueue ? 520 : 450;
+      const height = showFutureQueue ? 520 : 500;
       const centerX = width / 2;
       const queueStart = centerX - queueRowWidth / 2;
       const cacheStart = centerX - cacheRowWidth / 2;
       const metricsStart = centerX - metricsWidth / 2;
+      const incomingLabelY = showFutureQueue ? null : 118;
+      const incomingBoxY = showFutureQueue ? null : 146;
+      const incomingValueY = showFutureQueue ? null : 203;
+      const cacheLabelY = showFutureQueue ? 248 : 284;
+      const cacheSlotsY = showFutureQueue ? 286 : 316;
+      const cacheValueY = showFutureQueue ? 338 : 369;
+      const metricY = showFutureQueue ? 412 : 420;
+      const metricLabelY = showFutureQueue ? 440 : 448;
+      const metricValueY = showFutureQueue ? 474 : 482;
     
       const queueBoxes = showFutureQueue
         ? requests
@@ -3274,10 +3283,10 @@
             .join("")
         : `
           <g>
-            <text x="${centerX}" y="116" class="cache-section-label" text-anchor="middle">${t("cache_incoming_request")}</text>
+            <text x="${centerX}" y="${incomingLabelY}" class="cache-section-label" text-anchor="middle">${t("cache_incoming_request")}</text>
             <rect
               x="${centerX - incomingWidth / 2}"
-              y="144"
+              y="${incomingBoxY}"
               width="${incomingWidth}"
               height="${incomingHeight}"
               rx="24"
@@ -3287,7 +3296,7 @@
                   : "status-current"
               }"
             ></rect>
-            <text x="${centerX}" y="201" text-anchor="middle" class="bar-label">${escapeHtml(currentRequest)}</text>
+            <text x="${centerX}" y="${incomingValueY}" text-anchor="middle" class="bar-label">${escapeHtml(currentRequest)}</text>
           </g>
         `;
     
@@ -3299,13 +3308,13 @@
           <g>
             <rect
               x="${x}"
-              y="${showFutureQueue ? 286 : 262}"
+              y="${cacheSlotsY}"
               width="${slotWidth}"
               height="${slotHeight}"
               rx="22"
               class="cache-slot${isActive ? ` cache-slot-active cache-slot-${activeSlot.outcome}` : ""}"
             ></rect>
-            ${value ? `<text x="${x + slotWidth / 2}" y="${showFutureQueue ? 338 : 314}" text-anchor="middle" class="bar-label">${escapeHtml(value)}</text>` : `<text x="${x + slotWidth / 2}" y="${showFutureQueue ? 338 : 314}" text-anchor="middle" class="axis-label">—</text>`}
+            ${value ? `<text x="${x + slotWidth / 2}" y="${cacheValueY}" text-anchor="middle" class="bar-label">${escapeHtml(value)}</text>` : `<text x="${x + slotWidth / 2}" y="${cacheValueY}" text-anchor="middle" class="axis-label">—</text>`}
           </g>
         `;
       }).join("");
@@ -3317,9 +3326,9 @@
         .map(
           ({ x, label, value }) => `
             <g>
-              <rect x="${x}" y="${showFutureQueue ? 412 : 386}" width="${metricWidth}" height="${metricHeight}" rx="24" class="cache-metric-chip"></rect>
-              <text x="${x + metricWidth / 2}" y="${showFutureQueue ? 440 : 414}" text-anchor="middle" class="cache-metric-label">${escapeHtml(label)}</text>
-              <text x="${x + metricWidth / 2}" y="${showFutureQueue ? 474 : 448}" text-anchor="middle" class="cache-metric-value">${value}</text>
+              <rect x="${x}" y="${metricY}" width="${metricWidth}" height="${metricHeight}" rx="24" class="cache-metric-chip"></rect>
+              <text x="${x + metricWidth / 2}" y="${metricLabelY}" text-anchor="middle" class="cache-metric-label">${escapeHtml(label)}</text>
+              <text x="${x + metricWidth / 2}" y="${metricValueY}" text-anchor="middle" class="cache-metric-value">${value}</text>
             </g>
           `,
         )
@@ -3345,7 +3354,7 @@
           <svg viewBox="0 0 ${width} ${height}" class="timeline-svg cache-svg" data-board-svg aria-label="${t("view_cache")}">
             ${showFutureQueue ? `<text x="${centerX}" y="74" class="cache-section-label" text-anchor="middle">${t("cache_future_queue")}</text>` : ""}
             ${queueBoxes}
-            <text x="${centerX}" y="${showFutureQueue ? 248 : 234}" class="cache-section-label" text-anchor="middle">${t("cache_contents_label")}</text>
+            <text x="${centerX}" y="${cacheLabelY}" class="cache-section-label" text-anchor="middle">${t("cache_contents_label")}</text>
             ${cacheSlots}
             ${metricChips}
           </svg>
@@ -3692,11 +3701,11 @@
           <span>${t("card_guarantee")}</span>
           <strong>${algorithm.optimal ? t("guarantee_optimal") : t("guarantee_heuristic")}</strong>
           <small>${optimalGap === 0 ? t("guarantee_matches") : t("guarantee_gap", { gap: formatValue(optimalGap) })}</small>
+          <small>${t(algorithm.proofStyleKey)}</small>
         </article>
         <article class="summary-card">
           <span>${t("card_complexity")}</span>
           <strong>${escapeHtml(algorithm.complexity)}</strong>
-          <small>${t(algorithm.proofStyleKey)}</small>
         </article>
       `;
     }
