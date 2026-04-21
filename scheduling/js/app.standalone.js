@@ -1925,8 +1925,8 @@
       return boardState?.zoom?.[viewMode] ?? 1;
     }
     
-    function getBoardOffset(boardState, problemId, itemId) {
-      return boardState?.offsets?.[problemId]?.[itemId] ?? { x: 0, y: 0 };
+    function getBoardOffset(boardState, problemId, layoutKey, itemId) {
+      return boardState?.offsets?.[problemId]?.[layoutKey]?.[itemId] ?? { x: 0, y: 0 };
     }
     
     function renderBoardFigure(viewMode, legendMarkup, svgMarkup, boardState, t, hint = "", note = "") {
@@ -2130,10 +2130,11 @@
       const bounds = buildTimelineBounds("intervalScheduling", simulation, step.state);
       const rows = [...simulation.items].sort((a, b) => a.start - b.start || a.finish - b.finish || a.id.localeCompare(b.id));
       const height = rows.length * rowHeight + 84;
+      const layoutKey = rows.map((item) => item.id).join("|");
       const bars = rows
         .map((item, index) => {
           const status = getStatusForItem("intervalScheduling", item.id, step.state);
-          const offset = getBoardOffset(boardState, "intervalScheduling", item.id);
+          const offset = getBoardOffset(boardState, "intervalScheduling", layoutKey, item.id);
           const x = xScale(item.start, bounds, width, padding);
           const end = xScale(item.finish, bounds, width, padding);
           const y = 36 + index * rowHeight;
@@ -2144,13 +2145,13 @@
               class="timeline-row status-${status} draggable-item drag-y"
               data-drag-item
               data-problem-id="intervalScheduling"
+              data-layout-key="${layoutKey}"
               data-item-id="${escapeHtml(item.id)}"
               data-drag-axis="y"
               data-min-offset="${28 - y}"
               data-max-offset="${height - 58 - y}"
               ${translate}
             >
-              <text x="14" y="${y + 18}" class="row-label">${escapeHtml(item.id)}</text>
               <rect x="${x}" y="${y}" width="${Math.max(end - x, 16)}" height="22" rx="10" class="interval-bar status-${status}"></rect>
               ${label ? `<text x="${(x + end) / 2}" y="${y + 15}" class="bar-label" text-anchor="middle">${label}</text>` : ""}
             </g>
@@ -2187,10 +2188,11 @@
       const padding = 52;
       const height = Math.max(220, displayItems.length * rowHeight + 84);
       const roomAssignments = getRoomAssignmentMap(step.state.rooms);
+      const layoutKey = displayItems.map((item) => item.id).join("|");
     
       const bars = displayItems
         .map((item, index) => {
-          const offset = getBoardOffset(boardState, "intervalPartitioning", item.id);
+          const offset = getBoardOffset(boardState, "intervalPartitioning", layoutKey, item.id);
           const x = xScale(item.start, bounds, width, padding);
           const end = xScale(item.finish, bounds, width, padding);
           const y = 36 + index * rowHeight;
@@ -2204,13 +2206,13 @@
               class="timeline-row draggable-item drag-y"
               data-drag-item
               data-problem-id="intervalPartitioning"
+              data-layout-key="${layoutKey}"
               data-item-id="${escapeHtml(item.id)}"
               data-drag-axis="y"
               data-min-offset="${28 - y}"
               data-max-offset="${height - 58 - y}"
               ${translate}
             >
-              <text x="14" y="${y + 18}" class="row-label">${escapeHtml(item.id)}</text>
               <rect x="${x}" y="${y}" width="${Math.max(end - x, 18)}" height="24" rx="12" class="interval-bar ${fillClass}${currentClass}"></rect>
               ${label ? `<text x="${(x + end) / 2}" y="${y + 16}" class="bar-label" text-anchor="middle">${label}</text>` : ""}
             </g>
@@ -2247,6 +2249,7 @@
       const height = Math.max(220, 84 + displayItems.length * rowHeight);
       const bounds = buildTimelineBounds("minimizeLateness", simulation, step.state);
       const padding = 52;
+      const layoutKey = displayItems.map((item) => item.id).join("|");
     
       const bars = displayItems
         .map((item, index) => {
@@ -2258,7 +2261,7 @@
           const end = xScale(finish, bounds, width, padding);
           const deadlineX = xScale(item.deadline, bounds, width, padding);
           const y = 36 + index * rowHeight;
-          const offset = getBoardOffset(boardState, "minimizeLateness", item.id);
+          const offset = getBoardOffset(boardState, "minimizeLateness", layoutKey, item.id);
           const translate = offset.x ? ` transform="translate(${offset.x} 0)"` : "";
           const visualStart = Math.max(x, deadlineX - (offset.x ?? 0));
           const latenessWidth = Math.max(0, end - visualStart);
@@ -2271,6 +2274,7 @@
               class="timeline-row draggable-item drag-x status-${status}"
               data-drag-item
               data-problem-id="minimizeLateness"
+              data-layout-key="${layoutKey}"
               data-item-id="${escapeHtml(item.id)}"
               data-drag-axis="x"
               data-min-offset="${padding - x}"
@@ -2935,8 +2939,8 @@
       return getAlgorithm(state.problemId, state.algorithmId);
     }
     
-    function getBoardOffset(problemId, itemId) {
-      return state.board.offsets[problemId]?.[itemId] ?? { x: 0, y: 0 };
+    function getBoardOffset(problemId, layoutKey, itemId) {
+      return state.board.offsets[problemId]?.[layoutKey]?.[itemId] ?? { x: 0, y: 0 };
     }
     
     function resetBoardOffsets(problemId = state.problemId) {
@@ -2974,13 +2978,16 @@
       });
     }
     
-    function updateBoardOffset(problemId, itemId, axis, value) {
-      const current = getBoardOffset(problemId, itemId);
+    function updateBoardOffset(problemId, layoutKey, itemId, axis, value) {
+      const current = getBoardOffset(problemId, layoutKey, itemId);
       state.board.offsets[problemId] = {
         ...state.board.offsets[problemId],
-        [itemId]: {
-          x: axis === "x" ? value : current.x ?? 0,
-          y: axis === "y" ? value : current.y ?? 0,
+        [layoutKey]: {
+          ...(state.board.offsets[problemId]?.[layoutKey] ?? {}),
+          [itemId]: {
+            x: axis === "x" ? value : current.x ?? 0,
+            y: axis === "y" ? value : current.y ?? 0,
+          },
         },
       };
     }
@@ -3028,7 +3035,7 @@
       const deltaPixels = drag.axis === "x" ? event.clientX - drag.startClient : event.clientY - drag.startClient;
       const deltaUnits = deltaPixels * drag.unitsPerPixel;
       const nextValue = Math.max(drag.minOffset, Math.min(drag.maxOffset, drag.startOffset + deltaUnits));
-      updateBoardOffset(drag.problemId, drag.itemId, drag.axis, nextValue);
+      updateBoardOffset(drag.problemId, drag.layoutKey, drag.itemId, drag.axis, nextValue);
       render();
     }
     
@@ -3045,8 +3052,9 @@
     
       const axis = handle.dataset.dragAxis;
       const problemId = handle.dataset.problemId;
+      const layoutKey = handle.dataset.layoutKey;
       const itemId = handle.dataset.itemId;
-      if (!axis || !problemId || !itemId) {
+      if (!axis || !problemId || !layoutKey || !itemId) {
         return;
       }
     
@@ -3056,10 +3064,11 @@
         return;
       }
     
-      const currentOffset = getBoardOffset(problemId, itemId);
+      const currentOffset = getBoardOffset(problemId, layoutKey, itemId);
       state.board.drag = {
         axis,
         problemId,
+        layoutKey,
         itemId,
         startClient: axis === "x" ? event.clientX : event.clientY,
         startOffset: axis === "x" ? currentOffset.x ?? 0 : currentOffset.y ?? 0,

@@ -215,8 +215,8 @@ function getCurrentAlgorithm() {
   return getAlgorithm(state.problemId, state.algorithmId);
 }
 
-function getBoardOffset(problemId, itemId) {
-  return state.board.offsets[problemId]?.[itemId] ?? { x: 0, y: 0 };
+function getBoardOffset(problemId, layoutKey, itemId) {
+  return state.board.offsets[problemId]?.[layoutKey]?.[itemId] ?? { x: 0, y: 0 };
 }
 
 function resetBoardOffsets(problemId = state.problemId) {
@@ -254,13 +254,16 @@ function scheduleBoardSync() {
   });
 }
 
-function updateBoardOffset(problemId, itemId, axis, value) {
-  const current = getBoardOffset(problemId, itemId);
+function updateBoardOffset(problemId, layoutKey, itemId, axis, value) {
+  const current = getBoardOffset(problemId, layoutKey, itemId);
   state.board.offsets[problemId] = {
     ...state.board.offsets[problemId],
-    [itemId]: {
-      x: axis === "x" ? value : current.x ?? 0,
-      y: axis === "y" ? value : current.y ?? 0,
+    [layoutKey]: {
+      ...(state.board.offsets[problemId]?.[layoutKey] ?? {}),
+      [itemId]: {
+        x: axis === "x" ? value : current.x ?? 0,
+        y: axis === "y" ? value : current.y ?? 0,
+      },
     },
   };
 }
@@ -308,7 +311,7 @@ function onBoardPointerMove(event) {
   const deltaPixels = drag.axis === "x" ? event.clientX - drag.startClient : event.clientY - drag.startClient;
   const deltaUnits = deltaPixels * drag.unitsPerPixel;
   const nextValue = Math.max(drag.minOffset, Math.min(drag.maxOffset, drag.startOffset + deltaUnits));
-  updateBoardOffset(drag.problemId, drag.itemId, drag.axis, nextValue);
+  updateBoardOffset(drag.problemId, drag.layoutKey, drag.itemId, drag.axis, nextValue);
   render();
 }
 
@@ -325,8 +328,9 @@ function beginBoardDrag(event) {
 
   const axis = handle.dataset.dragAxis;
   const problemId = handle.dataset.problemId;
+  const layoutKey = handle.dataset.layoutKey;
   const itemId = handle.dataset.itemId;
-  if (!axis || !problemId || !itemId) {
+  if (!axis || !problemId || !layoutKey || !itemId) {
     return;
   }
 
@@ -336,10 +340,11 @@ function beginBoardDrag(event) {
     return;
   }
 
-  const currentOffset = getBoardOffset(problemId, itemId);
+  const currentOffset = getBoardOffset(problemId, layoutKey, itemId);
   state.board.drag = {
     axis,
     problemId,
+    layoutKey,
     itemId,
     startClient: axis === "x" ? event.clientX : event.clientY,
     startOffset: axis === "x" ? currentOffset.x ?? 0 : currentOffset.y ?? 0,
