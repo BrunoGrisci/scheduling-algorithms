@@ -5,13 +5,15 @@
   <a href="README.pt-BR.md">Português (Brasil)</a>
 </p>
 
-**scheduling-algorithms** is an interactive, browser-based educational webtool for three classical greedy scheduling problems:
+**scheduling-algorithms** is an interactive, browser-based educational webtool for five greedy-algorithm teaching scenarios:
 
 - **Interval Scheduling**
 - **Interval Partitioning**
 - **Scheduling to Minimize Maximum Lateness**
+- **Optimal Caching**
+- **Caching under Real Operating Conditions**
 
-The tool was built for classroom use and makes the algorithmic decisions visible through synchronized **code**, **data structure**, **interval**, **graph**, and **proof** views.
+The tool was built for classroom use and makes the algorithmic decisions visible through synchronized **code**, **data structure**, **interval / cache**, **graph** (when applicable), and **proof** views.
 
 It follows the project requirements in `instructions.md` and the technical references in `refs/`, especially Chapter 4 of *Algorithm Design* by Jon Kleinberg and Éva Tardos.
 
@@ -25,10 +27,10 @@ It follows the project requirements in `instructions.md` and the technical refer
 ## ✨ Features
 
 ### Core functionality
-- Switch between the three scheduling problems from a single control panel.
+- Switch between all five supported problems from a single control panel.
 - Choose among both **optimal** and **nonoptimal** greedy strategies so students can compare success and failure cases.
-- Load **reference-backed presets** from `refs/intervalos.py` and `refs/aulas1718.tex`.
-- Generate **random instances** with configurable size.
+- Load **reference-backed presets** derived from *Algorithm Design* and classroom material.
+- Generate **random instances** with configurable size or cache parameters.
 - Import custom instances from **CSV**.
 - Step through each execution with:
   - **Run step**
@@ -39,22 +41,26 @@ It follows the project requirements in `instructions.md` and the technical refer
 ### Synchronized visualizations
 - **Code view** with highlighted pseudocode line.
 - **Data structure view** showing sorted items, conflicts, slack, current focus, and the evolving greedy solution.
-- **Interval diagram view**:
+- **Interval / cache view**:
   - compatible / rejected intervals for interval scheduling,
   - room allocation for interval partitioning,
   - scheduled jobs, deadlines, and lateness for maximum lateness.
+  - cache contents, hits, misses, evictions, and request progression for the caching problems.
 - **Graph view**:
   - conflict graph for interval problems,
   - inversion graph for maximum lateness.
+- No graph tab for caching problems, as required by the updated specification.
 - **Proof view** for the three correct greedy algorithms:
   - **stays ahead** for earliest-finish-time-first interval scheduling,
   - **structural bound** for earliest-start-time-first interval partitioning,
-  - **exchange argument** for earliest-deadline-first maximum lateness.
+  - **exchange argument** for earliest-deadline-first maximum lateness,
+  - and a detailed exchange-style cache proof view for Farthest-in-Future.
 
 ### Usability & UI
 - Projector-oriented layout with large typography and high-contrast visual states.
 - **Light mode / dark mode** toggle.
 - **English / Brazilian Portuguese** toggle.
+- Fully collapsible and restorable **settings rail**.
 - Teaching-board **zoom in / zoom out / fit** controls for interval and graph views.
 - Direct manipulation on interval views:
   - drag intervals vertically in interval scheduling and interval partitioning,
@@ -80,10 +86,17 @@ a,3,7
 b,2,5
 ```
 
+### Caching CSV
+```csv
+n_elements,cache_size,queue
+6,3,A B A C D A B
+```
+
 Notes:
 - The header row is optional.
 - For interval problems, `finish` must be strictly greater than `start`.
 - For lateness instances, `length` must be positive.
+- For caching instances, `queue` is the request stream, separated by spaces.
 
 ---
 
@@ -92,9 +105,10 @@ Notes:
 This tool was designed to help students:
 - compare natural greedy rules that **fail** against those that are **provably optimal**,
 - understand how sorting order changes the resulting solution,
+- compare offline caching with full future knowledge against online caching under operating conditions,
 - track the exact state of the greedy algorithm at each step,
 - connect the implementation to the proof patterns used in the references,
-- inspect the role of conflict counts, overlap depth, deadlines, slack, and lateness.
+- inspect the role of conflict counts, overlap depth, deadlines, slack, lateness, cache misses, and eviction policies.
 
 It is suitable for:
 - undergraduate algorithms courses,
@@ -132,14 +146,17 @@ The repository includes a small regression-style test file that checks:
 - counterexamples for the nonoptimal greedy variants,
 - optimal interval partitioning versus failing heuristics,
 - maximum lateness examples from the lecture slides,
-- CSV parsing for both input formats.
+- optimal and heuristic caching behavior on book-derived request streams,
+- CSV parsing for all supported input formats.
 
 Browser validation was also used to confirm:
 - theme toggle,
 - language toggle,
 - problem switching,
+- settings rail collapse / restore,
 - teaching-board zoom behavior,
 - interval and job dragging,
+- cache-step rendering and miss counters,
 - proof tab rendering,
 - auto-run behavior.
 
@@ -151,7 +168,7 @@ Browser validation was also used to confirm:
 - Add editable table cells for direct in-browser instance editing.
 - Add export to CSV for the current instance and solution.
 - Add richer proof animations for the exchange and stays-ahead arguments.
-- Add optional complexity overlays that show the active data structure operations step by step.
+- Add optional complexity overlays that show the active data structure and cache operations step by step.
 
 ---
 ## 🎓 Credits
@@ -166,8 +183,7 @@ Instituto de Informática – Universidade Federal do Rio Grande do Sul (UFRGS)
 
 **Technical references used in this project**
 - Jon Kleinberg and Éva Tardos, *Algorithm Design*, Chapter 4
-- `refs/aulas1718.tex`
-- `refs/intervalos.py`
+- Classroom lecture material on greedy algorithms
 - Princeton greedy demos for earliest-finish-time-first and earliest-start-time-first
 
 **Development note**  

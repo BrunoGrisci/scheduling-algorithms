@@ -10,6 +10,8 @@
   --accent: #1f4f8b;
   --accent-strong: #163d70;
   --accent-soft: rgba(31, 79, 139, 0.12);
+  --current: #6d4ce8;
+  --current-soft: rgba(109, 76, 232, 0.14);
   --warm: #c96d14;
   --warm-soft: rgba(201, 109, 20, 0.12);
   --danger: #b9382f;
@@ -36,6 +38,8 @@ body[data-theme="dark"] {
   --accent: #8bb7ff;
   --accent-strong: #5c8ee4;
   --accent-soft: rgba(139, 183, 255, 0.16);
+  --current: #c4b5fd;
+  --current-soft: rgba(196, 181, 253, 0.18);
   --warm: #f59e0b;
   --warm-soft: rgba(245, 158, 11, 0.18);
   --danger: #f87171;
@@ -48,6 +52,10 @@ body[data-theme="dark"] {
 
 * {
   box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 html {
@@ -240,6 +248,14 @@ h1 {
   align-items: stretch;
 }
 
+.layout.settings-collapsed {
+  grid-template-columns: 3.5rem 0 minmax(0, 1fr);
+}
+
+.layout.settings-collapsed > .resize-handle-x {
+  display: none;
+}
+
 .panel {
   background: var(--surface-strong);
   border: 2px solid var(--line-strong);
@@ -298,6 +314,42 @@ input[type="file"] {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  grid-column: 1;
+}
+
+.settings-toggle-wrap {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.settings-toggle-btn {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+.settings-shell {
+  display: block;
+}
+
+.layout.settings-collapsed > .settings-rail {
+  padding: 0.75rem 0.45rem;
+}
+
+.layout.settings-collapsed .settings-toggle-wrap {
+  justify-content: center;
+  margin-bottom: 0;
+}
+
+.layout.settings-collapsed .settings-toggle-btn {
+  width: 100%;
 }
 
 .control-head {
@@ -353,8 +405,27 @@ input[type="file"] {
   gap: 0.75rem;
 }
 
+.field-row.single-action-row {
+  grid-template-columns: 1fr;
+}
+
+.cache-config-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.cache-config-grid .field > span {
+  min-block-size: 2.35em;
+  display: flex;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+
 .compact-field {
   max-width: 12rem;
+}
+
+.action-field button {
+  width: 100%;
 }
 
 .toolbar {
@@ -404,6 +475,7 @@ input[type="file"] {
   display: grid;
   gap: 0.9rem;
   min-height: 0;
+  grid-column: 3;
 }
 
 .workspace-top {
@@ -785,7 +857,7 @@ input[type="file"] {
 }
 
 .status-current {
-  background: color-mix(in srgb, var(--warm-soft) 76%, var(--surface));
+  background: color-mix(in srgb, var(--current-soft) 76%, var(--surface));
 }
 
 .status-processed {
@@ -874,7 +946,7 @@ input[type="file"] {
 
 .status-current.swatch,
 .swatch.status-current {
-  background: var(--warm);
+  background: var(--current);
 }
 
 .status-scheduled.swatch,
@@ -978,7 +1050,7 @@ rect.interval-bar.status-rejected {
 }
 
 rect.interval-bar.status-current {
-  fill: var(--warm);
+  fill: var(--current);
 }
 
 rect.interval-bar.status-scheduled,
@@ -997,8 +1069,82 @@ rect.interval-bar.partition-preview.partition-ghost {
 }
 
 .interval-bar.room-current {
-  stroke: var(--warm);
+  stroke: var(--current);
   stroke-width: 3;
+}
+
+.cache-slot {
+  fill: color-mix(in srgb, var(--surface-strong) 94%, var(--bg-soft));
+  stroke: color-mix(in srgb, var(--line-strong) 88%, transparent);
+  stroke-width: 2;
+  transition: fill 160ms ease, stroke 160ms ease, stroke-width 160ms ease, filter 160ms ease;
+}
+
+.cache-slot-active {
+  stroke-width: 4;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--surface-strong) 28%, transparent));
+}
+
+.cache-slot-hit {
+  fill: color-mix(in srgb, var(--ok-soft) 70%, var(--surface-strong));
+  stroke: var(--ok);
+}
+
+.cache-slot-miss {
+  fill: color-mix(in srgb, var(--danger-soft) 66%, var(--surface-strong));
+  stroke: var(--danger);
+}
+
+.cache-request-active {
+  stroke-width: 3.4;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--surface-strong) 24%, transparent));
+}
+
+.cache-request-hit {
+  stroke: color-mix(in srgb, var(--ok) 88%, white 12%);
+}
+
+.cache-request-miss {
+  stroke: color-mix(in srgb, var(--danger) 88%, white 12%);
+}
+
+.cache-svg .axis-label {
+  font-size: 18px;
+}
+
+.cache-svg .bar-label {
+  font-size: 24px;
+  stroke-width: 4px;
+}
+
+.cache-section-label {
+  fill: var(--accent-strong);
+  font-family: var(--font-body);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.cache-metric-chip {
+  fill: color-mix(in srgb, var(--surface-strong) 92%, var(--accent-soft));
+  stroke: color-mix(in srgb, var(--line-strong) 84%, transparent);
+  stroke-width: 2.2;
+}
+
+.cache-metric-label {
+  fill: var(--muted);
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.cache-metric-value {
+  fill: var(--text);
+  font-family: var(--font-body);
+  font-size: 30px;
+  font-weight: 800;
 }
 
 .draggable-item {
@@ -1079,11 +1225,11 @@ rect.interval-bar.partition-preview.partition-ghost {
 }
 
 .graph-node.status-current {
-  fill: color-mix(in srgb, var(--warm) 92%, black 8%);
+  fill: color-mix(in srgb, var(--current) 92%, black 8%);
 }
 
 .graph-node-current-ring {
-  stroke: var(--warm);
+  stroke: var(--current);
   stroke-width: 5;
 }
 
@@ -1188,7 +1334,7 @@ rect.interval-bar.partition-preview.partition-ghost {
 }
 
 .data-table tr.status-current {
-  outline: 2px solid color-mix(in srgb, var(--warm) 60%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--current) 60%, transparent);
 }
 
 .table-host {
@@ -1263,6 +1409,7 @@ rect.interval-bar.partition-preview.partition-ghost {
 
 .resize-handle-x {
   width: 0.8rem;
+  grid-column: 2;
 }
 
 .resize-handle-x::before {
@@ -1369,6 +1516,7 @@ a {
   }
 
   .field-row,
+  .cache-config-grid,
   .toolbar,
   .detail-tabs,
   .tabs {
@@ -1414,7 +1562,8 @@ a {
 
   .toolbar,
   .chip-grid,
-  .field-row {
+  .field-row,
+  .cache-config-grid {
     grid-template-columns: 1fr;
   }
 

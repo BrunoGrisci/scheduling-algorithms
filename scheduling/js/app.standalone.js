@@ -8,11 +8,14 @@
     const STORAGE_KEYS = {
       language: "scheduling-algorithms-language",
       theme: "scheduling-algorithms-theme",
+      settingsCollapsed: "scheduling-algorithms-settings-collapsed",
     };
     
     const LANGUAGES = ["en", "pt-BR"];
     const SPEED_OPTIONS = [0.25, 0.5, 1, 2, 4, 8, 10];
     const VIEW_MODES = ["code", "interval", "graph", "proof"];
+    
+    const CACHING_PROBLEMS = new Set(["optimalCaching", "realCaching"]);
     
     function interval(id, start, finish) {
       return { id, start, finish };
@@ -20,6 +23,18 @@
     
     function job(id, duration, deadline) {
       return { id, duration, deadline };
+    }
+    
+    function cacheInstance(universeSize, cacheSize, requests) {
+      const normalizedRequests = requests
+        .map((item) => String(item).trim())
+        .filter(Boolean);
+    
+      return {
+        universeSize: clampCacheUniverseSize(universeSize),
+        cacheSize: clampCacheSize(cacheSize, universeSize),
+        requests: normalizedRequests,
+      };
     }
     
     const PROBLEMS = {
@@ -30,6 +45,9 @@
         objectiveKey: "objective_interval_scheduling",
         goal: "maximize",
         csvColumns: ["id", "start", "finish"],
+        supportsGraph: true,
+        primaryViewLabelKey: "view_interval",
+        primaryViewTitleKey: "view_title_interval",
       },
       intervalPartitioning: {
         id: "intervalPartitioning",
@@ -38,6 +56,9 @@
         objectiveKey: "objective_interval_partitioning",
         goal: "minimize",
         csvColumns: ["id", "start", "finish"],
+        supportsGraph: true,
+        primaryViewLabelKey: "view_interval",
+        primaryViewTitleKey: "view_title_interval",
       },
       minimizeLateness: {
         id: "minimizeLateness",
@@ -46,6 +67,31 @@
         objectiveKey: "objective_minimize_lateness",
         goal: "minimize",
         csvColumns: ["job", "length", "deadline"],
+        supportsGraph: true,
+        primaryViewLabelKey: "view_interval",
+        primaryViewTitleKey: "view_title_interval",
+      },
+      optimalCaching: {
+        id: "optimalCaching",
+        labelKey: "problem_optimal_caching",
+        subtitleKey: "problem_optimal_caching_subtitle",
+        objectiveKey: "objective_optimal_caching",
+        goal: "minimize",
+        csvColumns: ["n_elements", "cache_size", "queue"],
+        supportsGraph: false,
+        primaryViewLabelKey: "view_cache",
+        primaryViewTitleKey: "view_title_cache",
+      },
+      realCaching: {
+        id: "realCaching",
+        labelKey: "problem_real_caching",
+        subtitleKey: "problem_real_caching_subtitle",
+        objectiveKey: "objective_real_caching",
+        goal: "minimize",
+        csvColumns: ["n_elements", "cache_size", "queue"],
+        supportsGraph: false,
+        primaryViewLabelKey: "view_cache",
+        primaryViewTitleKey: "view_title_cache",
       },
     };
     
@@ -155,6 +201,73 @@
           comparatorKey: "comparator_deadline",
         },
       ],
+      optimalCaching: [
+        {
+          id: "farthest-future",
+          labelKey: "algo_farthest_future",
+          ruleKey: "rule_farthest_future",
+          complexity: "O(mk + m)",
+          optimal: true,
+          proofStyleKey: "proof_cache_exchange",
+          comparatorKey: "comparator_future_distance",
+        },
+        {
+          id: "least-recently-used",
+          labelKey: "algo_lru",
+          ruleKey: "rule_lru",
+          complexity: "O(mk)",
+          optimal: false,
+          proofStyleKey: "proof_none",
+          comparatorKey: "comparator_least_recent",
+        },
+        {
+          id: "most-recently-used",
+          labelKey: "algo_mru",
+          ruleKey: "rule_mru",
+          complexity: "O(mk)",
+          optimal: false,
+          proofStyleKey: "proof_none",
+          comparatorKey: "comparator_most_recent",
+        },
+        {
+          id: "random-eviction",
+          labelKey: "algo_random_eviction",
+          ruleKey: "rule_random_eviction",
+          complexity: "O(mk)",
+          optimal: false,
+          proofStyleKey: "proof_none",
+          comparatorKey: "comparator_random",
+        },
+      ],
+      realCaching: [
+        {
+          id: "least-recently-used",
+          labelKey: "algo_lru",
+          ruleKey: "rule_lru",
+          complexity: "O(mk)",
+          optimal: true,
+          proofStyleKey: "proof_operating_benchmark",
+          comparatorKey: "comparator_least_recent",
+        },
+        {
+          id: "most-recently-used",
+          labelKey: "algo_mru",
+          ruleKey: "rule_mru",
+          complexity: "O(mk)",
+          optimal: false,
+          proofStyleKey: "proof_none",
+          comparatorKey: "comparator_most_recent",
+        },
+        {
+          id: "random-eviction",
+          labelKey: "algo_random_eviction",
+          ruleKey: "rule_random_eviction",
+          complexity: "O(mk)",
+          optimal: false,
+          proofStyleKey: "proof_none",
+          comparatorKey: "comparator_random",
+        },
+      ],
     };
     
     const PRESETS = {
@@ -163,7 +276,7 @@
           id: "refs-earliest-start-fails",
           labelKey: "preset_sched_refs_a",
           descriptionKey: "preset_sched_refs_a_desc",
-          sourceKey: "source_refs_intervalos_py",
+          sourceKey: "source_python_reference",
           items: [
             interval("A", 0, 9),
             interval("B", 1, 2),
@@ -176,7 +289,7 @@
           id: "refs-shortest-interval-fails",
           labelKey: "preset_sched_refs_b",
           descriptionKey: "preset_sched_refs_b_desc",
-          sourceKey: "source_refs_intervalos_py",
+          sourceKey: "source_python_reference",
           items: [
             interval("A", 0, 5),
             interval("B", 6, 10),
@@ -187,7 +300,7 @@
           id: "refs-fewest-conflicts-fails",
           labelKey: "preset_sched_refs_c",
           descriptionKey: "preset_sched_refs_c_desc",
-          sourceKey: "source_refs_intervalos_py",
+          sourceKey: "source_python_reference",
           items: [
             interval("A", 0, 2),
             interval("B", 1, 4),
@@ -208,7 +321,7 @@
           id: "refs-main-example",
           labelKey: "preset_part_refs_d",
           descriptionKey: "preset_part_refs_d_desc",
-          sourceKey: "source_refs_intervalos_py",
+          sourceKey: "source_classroom_reference",
           items: [
             interval("A", 0, 11),
             interval("B", 0, 1),
@@ -263,7 +376,7 @@
           id: "refs-python-example",
           labelKey: "preset_late_refs_python",
           descriptionKey: "preset_late_refs_python_desc",
-          sourceKey: "source_refs_intervalos_py",
+          sourceKey: "source_python_reference",
           items: [
             job("a", 3, 6),
             job("b", 2, 8),
@@ -277,15 +390,47 @@
           id: "refs-slide-instance-1",
           labelKey: "preset_late_slide_1",
           descriptionKey: "preset_late_slide_1_desc",
-          sourceKey: "source_refs_aulas_tex",
+          sourceKey: "source_lecture_slides",
           items: [job("a", 1, 3), job("b", 2, 2), job("c", 6, 7)],
         },
         {
           id: "refs-slide-instance-2",
           labelKey: "preset_late_slide_2",
           descriptionKey: "preset_late_slide_2_desc",
-          sourceKey: "source_refs_aulas_tex",
+          sourceKey: "source_lecture_slides",
           items: [job("a", 4, 10), job("b", 5, 6), job("c", 3, 9)],
+        },
+      ],
+      optimalCaching: [
+        {
+          id: "book-cache-short",
+          labelKey: "preset_cache_book_short",
+          descriptionKey: "preset_cache_book_short_desc",
+          sourceKey: "source_algorithm_design",
+          items: cacheInstance(3, 2, ["A", "B", "C", "B", "C", "A", "B"]),
+        },
+        {
+          id: "book-cache-exchange",
+          labelKey: "preset_cache_book_exchange",
+          descriptionKey: "preset_cache_book_exchange_desc",
+          sourceKey: "source_algorithm_design",
+          items: cacheInstance(5, 3, ["A", "B", "C", "D", "A", "D", "E", "A", "D", "B", "C"]),
+        },
+      ],
+      realCaching: [
+        {
+          id: "book-cache-short-online",
+          labelKey: "preset_real_cache_short",
+          descriptionKey: "preset_real_cache_short_desc",
+          sourceKey: "source_algorithm_design",
+          items: cacheInstance(3, 2, ["A", "B", "C", "B", "C", "A", "B"]),
+        },
+        {
+          id: "book-cache-locality",
+          labelKey: "preset_real_cache_locality",
+          descriptionKey: "preset_real_cache_locality_desc",
+          sourceKey: "source_algorithm_design",
+          items: cacheInstance(6, 3, ["A", "B", "A", "C", "A", "D", "A", "B", "E", "A", "F", "A"]),
         },
       ],
     };
@@ -310,6 +455,14 @@
       return getPresets(problemId)[0]?.id ?? "";
     }
     
+    function isCachingProblem(problemId) {
+      return CACHING_PROBLEMS.has(problemId);
+    }
+    
+    function getAvailableViewModes(problemId) {
+      return PROBLEMS[problemId]?.supportsGraph === false ? ["code", "interval", "proof"] : VIEW_MODES;
+    }
+    
     function makeIdentifier(index, uppercase = true) {
       const alphabet = uppercase ? "ABCDEFGHIJKLMNOPQRSTUVWXYZ" : "abcdefghijklmnopqrstuvwxyz";
       if (index < alphabet.length) {
@@ -326,9 +479,45 @@
       return Math.min(18, Math.max(3, Math.round(value)));
     }
     
-    function buildRandomInstance(problemId, size) {
-      const finalSize = clampRandomSize(size);
+    function clampCacheUniverseSize(value) {
+      if (!Number.isFinite(value)) {
+        return 6;
+      }
+      return Math.min(18, Math.max(2, Math.round(value)));
+    }
+    
+    function clampCacheSize(value, universeSize = 6) {
+      const safeUniverseSize = clampCacheUniverseSize(universeSize);
+      if (!Number.isFinite(value)) {
+        return Math.min(3, safeUniverseSize - 1);
+      }
+      return Math.min(Math.max(1, safeUniverseSize - 1), Math.max(1, Math.round(value)));
+    }
+    
+    function clampQueueSize(value) {
+      if (!Number.isFinite(value)) {
+        return 12;
+      }
+      return Math.min(40, Math.max(4, Math.round(value)));
+    }
+    
+    function normalizeCacheConfig(config = {}) {
+      const universeSize = clampCacheUniverseSize(config.universeSize);
+      const cacheSize = clampCacheSize(config.cacheSize, universeSize);
+      const queueSize = clampQueueSize(config.queueSize);
+      return { universeSize, cacheSize, queueSize };
+    }
+    
+    function getCacheConfigFromItems(items) {
+      const universeSize = clampCacheUniverseSize(items?.universeSize ?? 6);
+      const cacheSize = clampCacheSize(items?.cacheSize ?? Math.min(3, universeSize - 1), universeSize);
+      const queueSize = clampQueueSize(items?.requests?.length ?? 12);
+      return { universeSize, cacheSize, queueSize };
+    }
+    
+    function buildRandomInstance(problemId, config) {
       if (problemId === "minimizeLateness") {
+        const finalSize = clampRandomSize(Number(config));
         const items = [];
         let accumulated = 0;
         for (let index = 0; index < finalSize; index += 1) {
@@ -340,6 +529,14 @@
         return items;
       }
     
+      if (isCachingProblem(problemId)) {
+        const normalized = normalizeCacheConfig(config);
+        const symbols = Array.from({ length: normalized.universeSize }, (_, index) => makeIdentifier(index));
+        const requests = Array.from({ length: normalized.queueSize }, () => symbols[Math.floor(Math.random() * symbols.length)]);
+        return cacheInstance(normalized.universeSize, normalized.cacheSize, requests);
+      }
+    
+      const finalSize = clampRandomSize(Number(config));
       const items = [];
       for (let index = 0; index < finalSize; index += 1) {
         const start = Math.floor(Math.random() * Math.max(6, finalSize + 4));
@@ -347,6 +544,20 @@
         items.push(interval(makeIdentifier(index), start, finish));
       }
       return items;
+    }
+    
+    function parseCacheQueue(rawQueue) {
+      const tokens = String(rawQueue)
+        .trim()
+        .split(/[\s;>|/]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    
+      if (tokens.length === 0) {
+        throw new Error("invalid_csv_queue");
+      }
+    
+      return tokens;
     }
     
     function parseCsvText(problemId, csvText) {
@@ -362,14 +573,32 @@
       }
     
       const header = rows[0].map((cell) => cell.toLowerCase());
-      const expectsJobHeader = problemId === "minimizeLateness";
       const hasHeader =
-        (expectsJobHeader && header.join(",") === "job,length,deadline") ||
-        (!expectsJobHeader && header.join(",") === "id,start,finish");
+        (problemId === "minimizeLateness" && header.join(",") === "job,length,deadline") ||
+        ((problemId === "intervalScheduling" || problemId === "intervalPartitioning") && header.join(",") === "id,start,finish") ||
+        (isCachingProblem(problemId) && header.join(",") === "n_elements,cache_size,queue");
     
       const dataRows = hasHeader ? rows.slice(1) : rows;
       if (dataRows.length === 0) {
         throw new Error("empty_csv");
+      }
+    
+      if (isCachingProblem(problemId)) {
+        if (dataRows.length !== 1 || dataRows[0].length !== 3) {
+          throw new Error("invalid_csv_columns");
+        }
+    
+        const [rawUniverseSize, rawCacheSize, rawQueue] = dataRows[0];
+        const universeSize = Number(rawUniverseSize);
+        const cacheSize = Number(rawCacheSize);
+        const requests = parseCacheQueue(rawQueue);
+    
+        if (!Number.isFinite(universeSize) || !Number.isFinite(cacheSize)) {
+          throw new Error("invalid_csv_numbers");
+        }
+    
+        const normalized = normalizeCacheConfig({ universeSize, cacheSize, queueSize: requests.length });
+        return cacheInstance(normalized.universeSize, normalized.cacheSize, requests);
       }
     
       return dataRows.map((cells, index) => {
@@ -397,7 +626,7 @@
         return interval(id, start, finish);
       });
     }
-    return { getAlgorithms, getAlgorithm, getPresets, getPreset, getDefaultPresetId, clampRandomSize, buildRandomInstance, parseCsvText, STORAGE_KEYS, LANGUAGES, SPEED_OPTIONS, VIEW_MODES, PROBLEMS, ALGORITHMS, PRESETS };
+    return { getAlgorithms, getAlgorithm, getPresets, getPreset, getDefaultPresetId, isCachingProblem, getAvailableViewModes, clampRandomSize, clampCacheUniverseSize, clampCacheSize, clampQueueSize, normalizeCacheConfig, getCacheConfigFromItems, buildRandomInstance, parseCsvText, STORAGE_KEYS, LANGUAGES, SPEED_OPTIONS, VIEW_MODES, PROBLEMS, ALGORITHMS, PRESETS };
   })();
   const __module_algorithms = (() => {
     function numericIdCompare(a, b) {
@@ -442,6 +671,14 @@
       return items.map((item) => ({
         ...item,
         slack: item.deadline - item.duration,
+      }));
+    }
+    
+    function decorateCacheRequests(instance) {
+      return instance.requests.map((value, index) => ({
+        id: `q${index + 1}`,
+        value: String(value),
+        index,
       }));
     }
     
@@ -494,6 +731,106 @@
         return (a, b) => a.slack - b.slack || a.deadline - b.deadline || a.duration - b.duration || numericIdCompare(a, b);
       }
       return (a, b) => a.deadline - b.deadline || a.duration - b.duration || numericIdCompare(a, b);
+    }
+    
+    function buildRequestIndexMap(requests, metrics = null) {
+      const positions = new Map();
+      requests.forEach((value, index) => {
+        addOperations(metrics);
+        if (!positions.has(value)) {
+          positions.set(value, []);
+        }
+        positions.get(value).push(index);
+      });
+      return positions;
+    }
+    
+    function advanceRequestPointer(pointers, value, metrics = null) {
+      addOperations(metrics);
+      pointers.set(value, (pointers.get(value) ?? 0) + 1);
+    }
+    
+    function getNextUse(positions, pointers, value) {
+      const futureUses = positions.get(value) ?? [];
+      const pointer = pointers.get(value) ?? 0;
+      return futureUses[pointer] ?? Infinity;
+    }
+    
+    function createSeededRandom(seedText) {
+      let seed = 2166136261;
+      for (const char of seedText) {
+        seed ^= char.charCodeAt(0);
+        seed = Math.imul(seed, 16777619) >>> 0;
+      }
+      return () => {
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
+    }
+    
+    function snapshotCache(cacheEntries) {
+      return cacheEntries.map((entry) => entry.value);
+    }
+    
+    function findInCache(cacheEntries, value, metrics = null) {
+      for (let index = 0; index < cacheEntries.length; index += 1) {
+        addOperations(metrics);
+        if (cacheEntries[index].value === value) {
+          return index;
+        }
+      }
+      return -1;
+    }
+    
+    function selectCacheVictim(cacheEntries, algorithmId, context) {
+      const { metrics, nextPositions, requestPointers, lastAccessAt, rng } = context;
+    
+      if (algorithmId === "farthest-future") {
+        let chosenIndex = 0;
+        let chosenNextUse = -1;
+        const nextUses = [];
+        cacheEntries.forEach((entry, index) => {
+          const nextUse = getNextUse(nextPositions, requestPointers, entry.value);
+          nextUses.push({ value: entry.value, nextUse });
+          addOperations(metrics);
+          if (nextUse > chosenNextUse) {
+            chosenNextUse = nextUse;
+            chosenIndex = index;
+          }
+        });
+        return {
+          victimIndex: chosenIndex,
+          analysis: nextUses,
+        };
+      }
+    
+      if (algorithmId === "least-recently-used" || algorithmId === "most-recently-used") {
+        let chosenIndex = 0;
+        let chosenScore = lastAccessAt.get(cacheEntries[0].value) ?? -1;
+        const recency = [];
+        cacheEntries.forEach((entry, index) => {
+          const score = lastAccessAt.get(entry.value) ?? -1;
+          recency.push({ value: entry.value, lastAccess: score });
+          addOperations(metrics);
+          if (
+            (algorithmId === "least-recently-used" && score < chosenScore) ||
+            (algorithmId === "most-recently-used" && score > chosenScore)
+          ) {
+            chosenScore = score;
+            chosenIndex = index;
+          }
+        });
+        return {
+          victimIndex: chosenIndex,
+          analysis: recency,
+        };
+      }
+    
+      addOperations(metrics);
+      return {
+        victimIndex: Math.floor(rng() * cacheEntries.length),
+        analysis: [],
+      };
     }
     
     function mergeSortWithMetrics(items, compare, metrics = null) {
@@ -1068,12 +1405,221 @@
       return current;
     }
     
+    function runCachingCore(problemId, instance, algorithmId, recordSteps) {
+      const metrics = { operations: 0 };
+      const requests = decorateCacheRequests(instance);
+      const usesFutureKnowledge = algorithmId === "farthest-future";
+      let nextPositions = new Map();
+      const requestPointers = new Map();
+      const lastAccessAt = new Map();
+      const rng = createSeededRandom(`${problemId}|${algorithmId}|${instance.cacheSize}|${instance.universeSize}|${instance.requests.join(">")}`);
+      const cacheEntries = [];
+      const proofEvents = [];
+    
+      const state = {
+        cache: [],
+        currentId: null,
+        currentIndex: null,
+        currentRequest: null,
+        hits: 0,
+        misses: 0,
+        processedCount: 0,
+        requestOutcomes: [],
+        lastOutcome: null,
+        lastEvicted: null,
+        lastLoaded: null,
+        objectiveValue: 0,
+      };
+    
+      const steps = [];
+      let stepIndex = 0;
+      if (recordSteps) {
+        steps.push(makeStep(stepIndex++, null, "step_ready", {}, state, metrics.operations));
+      }
+      if (usesFutureKnowledge) {
+        nextPositions = buildRequestIndexMap(instance.requests, metrics);
+      }
+      if (recordSteps) {
+        addOperations(metrics);
+        steps.push(makeStep(stepIndex++, 1, "step_cache_initialized", { size: instance.cacheSize }, state, metrics.operations));
+      }
+    
+      requests.forEach((request, index) => {
+        state.currentId = request.id;
+        state.currentIndex = index;
+        state.currentRequest = request.value;
+        state.lastOutcome = null;
+        state.lastEvicted = null;
+        state.lastLoaded = null;
+    
+        addOperations(metrics);
+        if (recordSteps) {
+          steps.push(makeStep(stepIndex++, 2, "step_consider_request", { value: request.value, index: index + 1 }, state, metrics.operations));
+        }
+    
+        const hitIndex = findInCache(cacheEntries, request.value, metrics);
+        advanceRequestPointer(requestPointers, request.value, usesFutureKnowledge ? metrics : null);
+    
+        if (hitIndex >= 0) {
+          state.hits += 1;
+          state.processedCount = index + 1;
+          state.lastOutcome = "hit";
+          lastAccessAt.set(request.value, index);
+          addOperations(metrics, 2);
+          state.cache = snapshotCache(cacheEntries);
+          state.requestOutcomes.push({
+            index,
+            value: request.value,
+            outcome: "hit",
+            evicted: null,
+            cacheAfter: state.cache,
+          });
+          if (recordSteps) {
+            steps.push(makeStep(stepIndex++, 4, "step_cache_hit", { value: request.value }, state, metrics.operations));
+          }
+          return;
+        }
+    
+        state.misses += 1;
+        state.objectiveValue = state.misses;
+        state.processedCount = index + 1;
+        state.lastLoaded = request.value;
+    
+        if (cacheEntries.length < instance.cacheSize) {
+          cacheEntries.push({ value: request.value, insertedAt: index });
+          lastAccessAt.set(request.value, index);
+          state.cache = snapshotCache(cacheEntries);
+          state.lastOutcome = "miss-load";
+          state.requestOutcomes.push({
+            index,
+            value: request.value,
+            outcome: "miss-load",
+            evicted: null,
+            cacheAfter: state.cache,
+          });
+          addOperations(metrics, 3);
+          if (recordSteps) {
+            steps.push(makeStep(stepIndex++, 5, "step_cache_miss_load", { value: request.value }, state, metrics.operations));
+          }
+          return;
+        }
+    
+        const cacheBefore = snapshotCache(cacheEntries);
+        const victimSelection = selectCacheVictim(cacheEntries, algorithmId, {
+          metrics,
+          nextPositions,
+          requestPointers,
+          lastAccessAt,
+          rng,
+        });
+        const victim = cacheEntries.splice(victimSelection.victimIndex, 1)[0];
+        lastAccessAt.delete(victim.value);
+        cacheEntries.push({ value: request.value, insertedAt: index });
+        lastAccessAt.set(request.value, index);
+    
+        state.lastOutcome = "miss-evict";
+        state.lastEvicted = victim.value;
+        state.cache = snapshotCache(cacheEntries);
+        state.requestOutcomes.push({
+          index,
+          value: request.value,
+          outcome: "miss-evict",
+          evicted: victim.value,
+          cacheAfter: state.cache,
+        });
+        addOperations(metrics, 4);
+    
+        proofEvents.push({
+          requestIndex: index + 1,
+          requestValue: request.value,
+          cacheBefore,
+          victim: victim.value,
+          analysis: victimSelection.analysis,
+        });
+    
+        if (recordSteps) {
+          steps.push(
+            makeStep(
+              stepIndex++,
+              6,
+              "step_cache_miss_evict",
+              { value: request.value, evicted: victim.value },
+              state,
+              metrics.operations,
+            ),
+          );
+        }
+      });
+    
+      state.currentId = null;
+      state.currentIndex = null;
+      state.currentRequest = null;
+      state.lastOutcome = null;
+      if (recordSteps) {
+        steps.push(makeStep(stepIndex++, null, "step_finished", {}, state, metrics.operations));
+      }
+    
+      return {
+        problemId,
+        algorithmId,
+        instance: {
+          universeSize: instance.universeSize,
+          cacheSize: instance.cacheSize,
+          queueSize: instance.requests.length,
+          requests: [...instance.requests],
+        },
+        items: requests,
+        sortedItems: requests,
+        steps,
+        operationTotal: metrics.operations,
+        result: {
+          cache: snapshotCache(cacheEntries),
+          hits: state.hits,
+          misses: state.misses,
+          objectiveValue: state.misses,
+          requestOutcomes: state.requestOutcomes,
+        },
+        optimal: {
+          objectiveValue: 0,
+          cache: [],
+        },
+        proof: {
+          style: problemId === "optimalCaching" ? "cacheExchange" : "operatingBenchmark",
+          evictionEvents: proofEvents,
+          requests: [...instance.requests],
+          cacheSize: instance.cacheSize,
+        },
+      };
+    }
+    
+    function simulateCaching(problemId, instance, algorithmId) {
+      const benchmarkAlgorithmId = problemId === "optimalCaching" ? "farthest-future" : "least-recently-used";
+      const current = runCachingCore(problemId, instance, algorithmId, true);
+      const benchmark = runCachingCore(problemId, instance, benchmarkAlgorithmId, false);
+      current.optimal = {
+        objectiveValue: benchmark.result.objectiveValue,
+        cache: benchmark.result.cache,
+        hits: benchmark.result.hits,
+        misses: benchmark.result.misses,
+      };
+      if (problemId === "realCaching") {
+        current.proof.benchmarkAlgorithmId = benchmarkAlgorithmId;
+      }
+      return current;
+    }
+    
     function simulateProblem(problemId, algorithmId, items) {
       if (problemId === "intervalScheduling") {
         return simulateIntervalScheduling(items, algorithmId);
       }
       if (problemId === "intervalPartitioning") {
         return simulatePartitioning(items, algorithmId);
+      }
+      if (problemId === "minimizeLateness") {
+        return simulateLateness(items, algorithmId);
+      }
+      if (problemId === "optimalCaching" || problemId === "realCaching") {
+        return simulateCaching(problemId, items, algorithmId);
       }
       return simulateLateness(items, algorithmId);
     }
@@ -1093,6 +1639,21 @@
           witnessIds: depthInfo.witnessIds,
         };
       }
+      if (problemId === "minimizeLateness") {
+        const optimal = runLatenessCore(items, "earliest-deadline", false);
+        return {
+          objectiveValue: optimal.result.objectiveValue,
+          schedule: optimal.result.schedule,
+        };
+      }
+      if (problemId === "optimalCaching" || problemId === "realCaching") {
+        const benchmarkAlgorithmId = problemId === "optimalCaching" ? "farthest-future" : "least-recently-used";
+        const optimal = runCachingCore(problemId, items, benchmarkAlgorithmId, false);
+        return {
+          objectiveValue: optimal.result.objectiveValue,
+          cache: optimal.result.cache,
+        };
+      }
       const optimal = runLatenessCore(items, "earliest-deadline", false);
       return {
         objectiveValue: optimal.result.objectiveValue,
@@ -1101,6 +1662,9 @@
     }
     
     function buildConflictEdges(problemId, items, schedule = []) {
+      if (problemId === "optimalCaching" || problemId === "realCaching") {
+        return [];
+      }
       if (problemId === "minimizeLateness") {
         const inversions = countInversionsByDeadline(schedule);
         return inversions.pairs.map(([from, to]) => ({ from, to, type: "inversion" }));
@@ -1123,14 +1687,19 @@
       en: {
         app_title: "Scheduling Algorithms Visualizer",
         app_subtitle:
-          "Interactive visual explanations for interval scheduling, interval partitioning, and scheduling to minimize maximum lateness.",
+          "Interactive visual explanations for interval scheduling, interval partitioning, maximum lateness scheduling, and caching.",
         eyebrow: "Greedy Algorithms",
         controls_kicker: "Settings",
         controls_title: "Instance and playback",
+        settings_toggle_show: "Show settings panel",
+        settings_toggle_hide: "Hide settings panel",
         problem_label: "Problem",
         algorithm_label: "Greedy rule",
         preset_label: "Preset instance",
         random_size_label: "Random size",
+        cache_size_label: "Cache size",
+        cache_universe_label: "Different elements",
+        queue_size_label: "Queue size",
         random_action_label: "Generate",
         random_btn: "Random instance",
         csv_label: "Load CSV instance",
@@ -1143,10 +1712,12 @@
         step_counter_label: "Operation count",
         view_code: "Code",
         view_interval: "Intervals",
+        view_cache: "Cache",
         view_graph: "Graph",
         view_proof: "Proof",
         view_title_code: "Code and data structure view",
         view_title_interval: "Interval diagram view",
+        view_title_cache: "Cache state view",
         view_title_graph: "Conflict graph view",
         view_title_proof: "Correctness proof view",
         view_kicker: "Visualization",
@@ -1186,9 +1757,15 @@
         problem_interval_partitioning_subtitle: "Use the minimum number of rooms for all intervals.",
         problem_minimize_lateness: "Scheduling to Minimize Lateness",
         problem_minimize_lateness_subtitle: "Order all jobs to minimize the maximum lateness.",
+        problem_optimal_caching: "Optimal Caching",
+        problem_optimal_caching_subtitle: "Process the full request sequence with the future visible and minimize cache misses.",
+        problem_real_caching: "Caching under Real Operating Conditions",
+        problem_real_caching_subtitle: "Process requests online without showing the future queue.",
         objective_interval_scheduling: "Maximum number of compatible intervals",
         objective_interval_partitioning: "Minimum number of rooms",
         objective_minimize_lateness: "Minimum maximum lateness",
+        objective_optimal_caching: "Minimum number of cache misses",
+        objective_real_caching: "Minimum misses under operating conditions",
         algo_earliest_start: "Earliest start time first",
         algo_shortest_interval: "Shortest interval first",
         algo_fewest_conflicts: "Fewest conflicts first",
@@ -1196,6 +1773,10 @@
         algo_shortest_duration: "Shortest job first",
         algo_smallest_slack: "Smallest slack first",
         algo_earliest_deadline: "Earliest deadline first",
+        algo_farthest_future: "Farthest-in-Future",
+        algo_lru: "Least-Recently-Used (LRU)",
+        algo_mru: "Most-Recently-Used",
+        algo_random_eviction: "Random eviction",
         rule_earliest_start: "Sort by increasing start time",
         rule_shortest_interval: "Sort by increasing interval length",
         rule_fewest_conflicts: "Sort by increasing number of conflicts",
@@ -1203,6 +1784,10 @@
         rule_shortest_duration: "Sort by increasing processing time",
         rule_smallest_slack: "Sort by increasing slack d - t",
         rule_earliest_deadline: "Sort by increasing deadline",
+        rule_farthest_future: "On a miss, evict the item needed farthest in the future",
+        rule_lru: "On a miss, evict the least recently used cached item",
+        rule_mru: "On a miss, evict the most recently used cached item",
+        rule_random_eviction: "On a miss, evict a random cached item",
         comparator_start: "start time",
         comparator_finish: "finish time",
         comparator_length: "interval length",
@@ -1210,12 +1795,20 @@
         comparator_duration: "processing time",
         comparator_slack: "slack",
         comparator_deadline: "deadline",
+        comparator_future_distance: "latest next use",
+        comparator_least_recent: "least recent access",
+        comparator_most_recent: "most recent access",
+        comparator_random: "random victim choice",
         proof_none: "No proof of optimality: heuristic only",
         proof_stays_ahead: "Proof style: stays ahead",
         proof_structural_bound: "Proof style: structural bound",
         proof_exchange_argument: "Proof style: exchange argument",
-        source_refs_intervalos_py: "Source: Python reference implementation",
-        source_refs_aulas_tex: "Source: lecture slides",
+        proof_cache_exchange: "Proof style: exchange argument on cache schedules",
+        proof_operating_benchmark: "Benchmark policy under operating conditions",
+        source_python_reference: "Source: Python reference implementation",
+        source_lecture_slides: "Source: lecture slides",
+        source_algorithm_design: "Source: Algorithm Design, Chapter 4",
+        source_classroom_reference: "Source: classroom reference instance",
         source_curated: "Source: curated classroom counterexample",
         source_generated: "Source: generated in the browser",
         preset_sched_refs_a: "Reference example A",
@@ -1238,6 +1831,14 @@
         preset_late_slide_1_desc: "Shortest job and smallest slack are compared against earliest deadline.",
         preset_late_slide_2: "Slide instance 2",
         preset_late_slide_2_desc: "Second slide instance for lateness comparisons.",
+        preset_cache_book_short: "Book cache example 1",
+        preset_cache_book_short_desc: "The short three-item cache sequence from the book, starting with an empty cache.",
+        preset_cache_book_exchange: "Book cache example 2",
+        preset_cache_book_exchange_desc: "The exchange-argument sequence used to discuss Farthest-in-Future.",
+        preset_real_cache_short: "Operating-conditions example 1",
+        preset_real_cache_short_desc: "The short cache sequence, but revealed one request at a time.",
+        preset_real_cache_locality: "Operating-conditions locality example",
+        preset_real_cache_locality_desc: "A sequence with strong locality, where LRU should behave well.",
         preset_custom: "Current custom instance",
         card_objective: "Objective",
         card_rule: "Rule",
@@ -1279,6 +1880,14 @@
         code_late_6: "update L with lateness(j)",
         code_late_7: "t = finish(j)",
         code_late_8: "return the schedule",
+        code_cache_1: "cache = empty structure of capacity k",
+        code_cache_2: "for each request d_i in sequence order",
+        code_cache_3: "if d_i is already in the cache",
+        code_cache_4: "register a hit",
+        code_cache_5: "otherwise register a miss",
+        code_cache_6: "if the cache has free space, insert d_i",
+        code_cache_7: "otherwise apply {rule} and insert d_i",
+        code_cache_8: "return the miss count",
         state_selected: "Selected intervals",
         state_rejected: "Rejected intervals",
         state_last_finish: "Last finish time",
@@ -1289,6 +1898,9 @@
         state_scheduled_jobs: "Scheduled jobs",
         state_time: "Current time",
         state_max_lateness: "Maximum lateness",
+        state_cache_capacity: "Cache capacity",
+        state_hits: "Hits",
+        state_misses: "Misses",
         state_current_item: "Current item",
         state_step_message: "Current step",
         state_none: "None",
@@ -1299,6 +1911,7 @@
         empty_selected: "No intervals selected yet.",
         empty_rooms: "No rooms opened yet.",
         empty_schedule: "No jobs scheduled yet.",
+        empty_cache: "The cache is empty.",
         room_label: "Room {room}",
         partition_preview_label: "Unassigned intervals",
         partition_rooms_label: "Open rooms",
@@ -1322,6 +1935,12 @@
         header_slack: "Slack",
         header_completion: "Scheduled interval",
         header_lateness: "Lateness",
+        header_request_index: "Request #",
+        header_request: "Request",
+        header_outcome: "Outcome",
+        header_evicted: "Evicted",
+        header_cache_after: "Cache after",
+        header_cache_before: "Cache before",
         header_start_short: "s",
         header_finish_short: "f",
         header_length_short: "len",
@@ -1330,6 +1949,24 @@
         header_deadline_short: "d",
         header_slack_short: "slack",
         header_lateness_short: "late",
+        request_label_short: "Request {index}",
+        cache_current_request: "Current request",
+        cache_current_contents: "Current cache",
+        cache_request_stream: "Reference stream",
+        cache_future_queue: "Future queue",
+        cache_incoming_request: "Incoming request",
+        cache_contents_label: "Cache contents",
+        cache_misses_label: "Misses: {value}",
+        cache_hits_label: "Hits: {value}",
+        cache_hit_banner: "Hit. Hits: {hits}; misses: {misses}.",
+        cache_miss_banner: "Miss. Hits: {hits}; misses: {misses}.",
+        cache_legend_hit: "Hit / already cached",
+        cache_legend_miss: "Miss / loaded now",
+        cache_evicted_sentence: "Evicted item: {value}.",
+        cache_no_eviction: "No eviction was needed at this step.",
+        cache_outcome_hit: "Hit",
+        cache_outcome_miss_load: "Miss, loaded into free slot",
+        cache_outcome_miss_evict: "Miss, evicted another item",
         step_sorted: "Sorted the input structure ({count} items).",
         step_ready: "Ready to start. The original input order is shown.",
         step_initialized: "Initialized the greedy state.",
@@ -1341,6 +1978,11 @@
         step_open_room: "Opened room {roomId} for interval {id}.",
         step_consider_job: "Considering job {id}.",
         step_schedule_job: "Scheduled job {id} on [{start}, {finish}] with lateness {lateness}.",
+        step_cache_initialized: "Initialized an empty cache with capacity {size}.",
+        step_consider_request: "Processing request {index}: {value}.",
+        step_cache_hit: "Request {value} is already in the cache.",
+        step_cache_miss_load: "Miss on {value}; loaded it into a free cache slot.",
+        step_cache_miss_evict: "Miss on {value}; evicted {evicted} and loaded {value}.",
         step_finished: "Reached the final state.",
         log_line_label: "Highlighted line: {line}",
         log_line_label_none: "No line highlighted yet",
@@ -1362,6 +2004,18 @@
         proof_exchange_argument_title: "Exchange argument proof",
         proof_exchange_argument_body:
           "An optimal idle-free schedule can be transformed into earliest-deadline order by repeatedly swapping adjacent inversions without increasing maximum lateness.",
+        proof_cache_exchange_title: "Exchange argument for Farthest-in-Future",
+        proof_cache_exchange_body:
+          "Belady’s rule is proved by transforming any optimal reduced schedule so that it agrees with Farthest-in-Future one eviction decision at a time.",
+        proof_cache_reduced:
+          "First reduce the schedule: only load an item when it is actually requested. Then misses and cache insertions coincide.",
+        proof_cache_transform:
+          "At the first disagreement, swap the other schedule’s victim with the farthest-in-future victim. The caches synchronize again before the discarded item is needed.",
+        proof_operating_benchmark_title: "Operating-conditions benchmark",
+        proof_operating_benchmark_body:
+          "The reference chapter motivates LRU through locality of reference: recent requests are usually needed again soon.",
+        proof_operating_benchmark_note:
+          "This tool therefore uses LRU as the benchmark policy in the operating-conditions scenario, while still showing MRU and random eviction for comparison.",
         proof_conclusion_title: "Conclusion",
         proof_sched_conclusion:
           "Greedy selected {greedy} intervals and the optimal benchmark also selects {optimal}; the schedule is optimal.",
@@ -1373,6 +2027,10 @@
           "The current schedule has {inversions} deadline inversions and maximum lateness {lateness}. Earliest-deadline order eliminates inversions and is optimal.",
         proof_lateness_swap:
           "Swapping an adjacent inverted pair never increases maximum lateness, so repeated swaps transform an optimal schedule into earliest-deadline order.",
+        proof_cache_conclusion:
+          "Following the same exchange step through the whole sequence shows that Farthest-in-Future achieves the minimum possible miss count {misses}.",
+        proof_real_cache_conclusion:
+          "The current policy incurs {misses} misses on this instance; the operating-conditions benchmark incurs {best}.",
         proof_depth_sentence: "At time {time}, depth = {depth}. The intervals shown below must occupy different rooms.",
         proof_greedy_finish: "Greedy r-th interval",
         proof_optimal_finish: "Optimal r-th interval",
@@ -1391,18 +2049,24 @@
         empty_csv: "the file is empty",
         invalid_csv_columns: "each row must have exactly three columns",
         invalid_csv_numbers: "numeric values are invalid for this problem",
+        invalid_csv_queue: "the queue column must contain at least one request symbol",
       },
       "pt-BR": {
         app_title: "Visualizador de Algoritmos de Escalonamento",
         app_subtitle:
-          "Explicações visuais interativas para escalonamento de intervalos, particionamento de intervalos e minimização do atraso máximo.",
+          "Explicações visuais interativas para escalonamento de intervalos, particionamento de intervalos, atraso máximo e caching.",
         eyebrow: "Algoritmos Gulosos",
         controls_kicker: "Configurações",
         controls_title: "Instância e execução",
+        settings_toggle_show: "Mostrar painel de configurações",
+        settings_toggle_hide: "Ocultar painel de configurações",
         problem_label: "Problema",
         algorithm_label: "Regra gulosa",
         preset_label: "Instância predefinida",
         random_size_label: "Tamanho aleatório",
+        cache_size_label: "Tamanho do cache",
+        cache_universe_label: "Elementos diferentes",
+        queue_size_label: "Tamanho da fila",
         random_action_label: "Gerar",
         random_btn: "Instância aleatória",
         csv_label: "Carregar instância CSV",
@@ -1412,13 +2076,15 @@
         stop_btn: "Parar execução automática",
         complete_btn: "Executar até o final",
         speed_label: "Velocidade automática",
-        step_counter_label: "Contador de operacoes",
+        step_counter_label: "Contador de operações",
         view_code: "Código",
         view_interval: "Intervalos",
+        view_cache: "Cache",
         view_graph: "Grafo",
         view_proof: "Prova",
         view_title_code: "Visualização de código e estrutura de dados",
         view_title_interval: "Visualização do diagrama de intervalos",
+        view_title_cache: "Visualização do estado do cache",
         view_title_graph: "Visualização do grafo",
         view_title_proof: "Visualização da prova de corretude",
         view_kicker: "Visualização",
@@ -1458,9 +2124,15 @@
         problem_interval_partitioning_subtitle: "Use o número mínimo de salas para todos os intervalos.",
         problem_minimize_lateness: "Escalonamento para Minimizar Atraso",
         problem_minimize_lateness_subtitle: "Ordene todas as tarefas para minimizar o atraso máximo.",
+        problem_optimal_caching: "Caching Ótimo",
+        problem_optimal_caching_subtitle: "Processe a sequência completa de requisições com o futuro visível e minimize faltas de cache.",
+        problem_real_caching: "Caching em Condições Reais de Operação",
+        problem_real_caching_subtitle: "Processe requisições online sem mostrar a fila futura.",
         objective_interval_scheduling: "Máximo número de intervalos compatíveis",
         objective_interval_partitioning: "Mínimo número de salas",
         objective_minimize_lateness: "Mínimo atraso máximo",
+        objective_optimal_caching: "Número mínimo de faltas de cache",
+        objective_real_caching: "Mínimo de faltas em condições reais",
         algo_earliest_start: "Inicia mais cedo",
         algo_shortest_interval: "Menor intervalo",
         algo_fewest_conflicts: "Menos conflitos",
@@ -1468,6 +2140,10 @@
         algo_shortest_duration: "Menor duração",
         algo_smallest_slack: "Menor folga",
         algo_earliest_deadline: "Menor deadline",
+        algo_farthest_future: "Farthest-in-Future",
+        algo_lru: "Least-Recently-Used (LRU)",
+        algo_mru: "Most-Recently-Used",
+        algo_random_eviction: "Evicção aleatória",
         rule_earliest_start: "Ordena por tempo inicial crescente",
         rule_shortest_interval: "Ordena por comprimento crescente do intervalo",
         rule_fewest_conflicts: "Ordena por número crescente de conflitos",
@@ -1475,6 +2151,10 @@
         rule_shortest_duration: "Ordena por tempo de processamento crescente",
         rule_smallest_slack: "Ordena por folga crescente d - t",
         rule_earliest_deadline: "Ordena por deadline crescente",
+        rule_farthest_future: "Em uma falta, remove o item necessário mais adiante no futuro",
+        rule_lru: "Em uma falta, remove o item em cache usado há mais tempo",
+        rule_mru: "Em uma falta, remove o item em cache usado mais recentemente",
+        rule_random_eviction: "Em uma falta, remove um item aleatório do cache",
         comparator_start: "tempo inicial",
         comparator_finish: "tempo final",
         comparator_length: "comprimento do intervalo",
@@ -1482,12 +2162,20 @@
         comparator_duration: "tempo de processamento",
         comparator_slack: "folga",
         comparator_deadline: "deadline",
+        comparator_future_distance: "próximo uso mais distante",
+        comparator_least_recent: "acesso menos recente",
+        comparator_most_recent: "acesso mais recente",
+        comparator_random: "escolha aleatória",
         proof_none: "Sem prova de otimalidade: apenas heurística",
         proof_stays_ahead: "Estilo da prova: fica à frente",
         proof_structural_bound: "Estilo da prova: limite estrutural",
         proof_exchange_argument: "Estilo da prova: argumento da troca",
-        source_refs_intervalos_py: "Fonte: implementação de referência em Python",
-        source_refs_aulas_tex: "Fonte: slides da disciplina",
+        proof_cache_exchange: "Estilo da prova: troca em escalonamentos de cache",
+        proof_operating_benchmark: "Política de referência em condições reais",
+        source_python_reference: "Fonte: implementação de referência em Python",
+        source_lecture_slides: "Fonte: slides da disciplina",
+        source_algorithm_design: "Fonte: Algorithm Design, Capítulo 4",
+        source_classroom_reference: "Fonte: instância de referência da disciplina",
         source_curated: "Fonte: contraexemplo didático curado",
         source_generated: "Fonte: gerada no navegador",
         preset_sched_refs_a: "Exemplo de referência A",
@@ -1510,6 +2198,14 @@
         preset_late_slide_1_desc: "Compara menor duração e menor folga contra menor deadline.",
         preset_late_slide_2: "Instância 2 dos slides",
         preset_late_slide_2_desc: "Segunda instância dos slides para comparar atrasos.",
+        preset_cache_book_short: "Exemplo de cache do livro 1",
+        preset_cache_book_short_desc: "A sequência curta de três itens do livro, começando com cache vazio.",
+        preset_cache_book_exchange: "Exemplo de cache do livro 2",
+        preset_cache_book_exchange_desc: "A sequência usada na discussão do argumento da troca do Farthest-in-Future.",
+        preset_real_cache_short: "Exemplo de operação real 1",
+        preset_real_cache_short_desc: "A sequência curta de cache, revelada uma requisição por vez.",
+        preset_real_cache_locality: "Exemplo de localidade em operação real",
+        preset_real_cache_locality_desc: "Uma sequência com forte localidade, em que o LRU deve ir bem.",
         preset_custom: "Instância personalizada atual",
         card_objective: "Objetivo",
         card_rule: "Regra",
@@ -1551,6 +2247,14 @@
         code_late_6: "atualize L com atraso(j)",
         code_late_7: "t = fim(j)",
         code_late_8: "retorne o escalonamento",
+        code_cache_1: "cache = estrutura vazia com capacidade k",
+        code_cache_2: "para cada requisição d_i na sequência",
+        code_cache_3: "se d_i já está no cache",
+        code_cache_4: "registre um acerto",
+        code_cache_5: "senão registre uma falta",
+        code_cache_6: "se houver espaço livre, insira d_i",
+        code_cache_7: "senão aplique {rule} e insira d_i",
+        code_cache_8: "retorne o número de faltas",
         state_selected: "Intervalos selecionados",
         state_rejected: "Intervalos rejeitados",
         state_last_finish: "Último tempo final",
@@ -1561,6 +2265,9 @@
         state_scheduled_jobs: "Tarefas escalonadas",
         state_time: "Tempo atual",
         state_max_lateness: "Atraso máximo",
+        state_cache_capacity: "Capacidade do cache",
+        state_hits: "Acertos",
+        state_misses: "Faltas",
         state_current_item: "Item atual",
         state_step_message: "Passo atual",
         state_none: "Nenhum",
@@ -1571,6 +2278,7 @@
         empty_selected: "Nenhum intervalo selecionado ainda.",
         empty_rooms: "Nenhuma sala aberta ainda.",
         empty_schedule: "Nenhuma tarefa escalonada ainda.",
+        empty_cache: "O cache está vazio.",
         room_label: "Sala {room}",
         partition_preview_label: "Intervalos não atribuídos",
         partition_rooms_label: "Salas abertas",
@@ -1594,6 +2302,12 @@
         header_slack: "Folga",
         header_completion: "Intervalo escalonado",
         header_lateness: "Atraso",
+        header_request_index: "Req. #",
+        header_request: "Requisição",
+        header_outcome: "Resultado",
+        header_evicted: "Removido",
+        header_cache_after: "Cache após",
+        header_cache_before: "Cache antes",
         header_start_short: "s",
         header_finish_short: "f",
         header_length_short: "tam",
@@ -1602,6 +2316,24 @@
         header_deadline_short: "d",
         header_slack_short: "folga",
         header_lateness_short: "atr",
+        request_label_short: "Req. {index}",
+        cache_current_request: "Requisição atual",
+        cache_current_contents: "Cache atual",
+        cache_request_stream: "Fluxo de referências",
+        cache_future_queue: "Fila futura",
+        cache_incoming_request: "Nova requisição",
+        cache_contents_label: "Conteúdo do cache",
+        cache_misses_label: "Faltas: {value}",
+        cache_hits_label: "Acertos: {value}",
+        cache_hit_banner: "Acerto. Acertos: {hits}; faltas: {misses}.",
+        cache_miss_banner: "Falta. Acertos: {hits}; faltas: {misses}.",
+        cache_legend_hit: "Acerto / já estava no cache",
+        cache_legend_miss: "Falta / carregado agora",
+        cache_evicted_sentence: "Item removido: {value}.",
+        cache_no_eviction: "Nenhuma remoção foi necessária neste passo.",
+        cache_outcome_hit: "Acerto",
+        cache_outcome_miss_load: "Falta, carregado em espaço livre",
+        cache_outcome_miss_evict: "Falta, com remoção de outro item",
         step_sorted: "Estrutura de entrada ordenada ({count} itens).",
         step_ready: "Pronto para começar. A ordem original da entrada está sendo mostrada.",
         step_initialized: "Estado guloso inicializado.",
@@ -1613,6 +2345,11 @@
         step_open_room: "Sala {roomId} aberta para o intervalo {id}.",
         step_consider_job: "Considerando a tarefa {id}.",
         step_schedule_job: "Tarefa {id} escalonada em [{start}, {finish}] com atraso {lateness}.",
+        step_cache_initialized: "Inicializou um cache vazio com capacidade {size}.",
+        step_consider_request: "Processando a requisição {index}: {value}.",
+        step_cache_hit: "A requisição {value} já está no cache.",
+        step_cache_miss_load: "Falta em {value}; carregou em uma posição livre do cache.",
+        step_cache_miss_evict: "Falta em {value}; removeu {evicted} e carregou {value}.",
         step_finished: "Estado final alcançado.",
         log_line_label: "Linha destacada: {line}",
         log_line_label_none: "Nenhuma linha destacada ainda",
@@ -1634,6 +2371,18 @@
         proof_exchange_argument_title: "Prova por argumento da troca",
         proof_exchange_argument_body:
           "Um escalonamento ótimo sem ociosidade pode ser transformado na ordem de deadlines crescentes trocando inversões adjacentes sem aumentar o atraso máximo.",
+        proof_cache_exchange_title: "Argumento da troca para Farthest-in-Future",
+        proof_cache_exchange_body:
+          "A regra de Belady é provada transformando qualquer escalonamento ótimo reduzido para concordar com o Farthest-in-Future, uma decisão de remoção por vez.",
+        proof_cache_reduced:
+          "Primeiro reduzimos o escalonamento: só carregamos um item quando ele é realmente requisitado. Assim, faltas e carregamentos coincidem.",
+        proof_cache_transform:
+          "Na primeira divergência, trocamos a vítima do outro escalonamento pela vítima mais distante no futuro. Os caches voltam a coincidir antes de o item descartado ser necessário.",
+        proof_operating_benchmark_title: "Referência em condições reais",
+        proof_operating_benchmark_body:
+          "O capítulo de referência motiva LRU pela localidade de referência: itens usados recentemente tendem a ser requisitados de novo em breve.",
+        proof_operating_benchmark_note:
+          "Por isso, esta ferramenta usa o LRU como política de referência no cenário de condições reais, mostrando MRU e remoção aleatória para comparação.",
         proof_conclusion_title: "Conclusão",
         proof_sched_conclusion:
           "A estratégia gulosa selecionou {greedy} intervalos e o benchmark ótimo também seleciona {optimal}; o escalonamento é ótimo.",
@@ -1645,6 +2394,10 @@
           "O escalonamento atual tem {inversions} inversões de deadline e atraso máximo {lateness}. A ordem por deadline elimina inversões e é ótima.",
         proof_lateness_swap:
           "Trocar uma inversão adjacente nunca aumenta o atraso máximo, então repetições dessa troca transformam uma solução ótima na ordem por deadlines.",
+        proof_cache_conclusion:
+          "Aplicando o mesmo passo de troca ao longo de toda a sequência, mostramos que Farthest-in-Future atinge o número mínimo possível de faltas {misses}.",
+        proof_real_cache_conclusion:
+          "A política atual produz {misses} faltas nesta instância; a política de referência em condições reais produz {best}.",
         proof_depth_sentence: "No tempo {time}, a profundidade é {depth}. Os intervalos abaixo precisam de salas diferentes.",
         proof_greedy_finish: "r-ésimo intervalo guloso",
         proof_optimal_finish: "r-ésimo intervalo ótimo",
@@ -1663,6 +2416,7 @@
         empty_csv: "o arquivo está vazio",
         invalid_csv_columns: "cada linha precisa ter exatamente três colunas",
         invalid_csv_numbers: "os valores numéricos são inválidos para este problema",
+        invalid_csv_queue: "a coluna queue precisa conter ao menos um símbolo de requisição",
       },
     };
     
@@ -1683,40 +2437,42 @@
     function getHelpHtml(language, t) {
       if (language === "pt-BR") {
         return `
-          <p>Escolha um dos três problemas, depois selecione uma regra gulosa e uma instância. A ordenação já aparece refletida na visualização de código e estrutura de dados.</p>
+          <p>Escolha um dos cinco problemas, depois selecione uma regra gulosa e uma instância. Nos problemas de escalonamento, a ordenação aparece refletida na visualização de código e estrutura de dados; nos problemas de cache, a sequência é processada requisição por requisição.</p>
           <ul>
             <li><strong>Executar passo</strong>: avança um passo e destaca a linha correspondente do pseudocódigo.</li>
             <li><strong>Execução automática</strong>: reproduz o algoritmo continuamente na velocidade escolhida.</li>
             <li><strong>Executar até o final</strong>: salta direto para o estado final e para a solução produzida.</li>
-            <li><strong>CSV</strong>: para intervalos use <code>id,start,finish</code>; para atraso use <code>job,length,deadline</code>. O cabeçalho é opcional.</li>
+            <li><strong>CSV</strong>: para intervalos use <code>id,start,finish</code>; para atraso use <code>job,length,deadline</code>; para cache use <code>n_elements,cache_size,queue</code>. O cabeçalho é opcional.</li>
+            <li><strong>Painel lateral</strong>: use o botão no topo para recolher ou restaurar completamente as configurações.</li>
           </ul>
           <p>As quatro abas foram pensadas para objetivos diferentes:</p>
           <ul>
             <li><strong>Código</strong>: pseudocódigo, item focal e evolução da estrutura de dados.</li>
-            <li><strong>Intervalos</strong>: diagrama temporal das escolhas, rejeições, salas ou atrasos.</li>
-            <li><strong>Grafo</strong>: grafo de conflitos para problemas com intervalos e grafo de inversões para atraso máximo.</li>
-            <li><strong>Prova</strong>: visualização das três provas corretas do material de referência.</li>
+            <li><strong>Intervalos / Cache</strong>: diagrama temporal para escalonamento e visualização do cache/fila de requisições para os problemas de caching.</li>
+            <li><strong>Grafo</strong>: aparece apenas nos problemas de escalonamento.</li>
+            <li><strong>Prova</strong>: visualização dos argumentos corretos do material de referência, incluindo o argumento da troca para Farthest-in-Future.</li>
           </ul>
-          <p>${t("proof_stays_ahead")}, ${t("proof_structural_bound")} e ${t("proof_exchange_argument")} aparecem apenas nas regras ótimas; heurísticas mostram a comparação com o benchmark ótimo.</p>
+          <p>${t("proof_stays_ahead")}, ${t("proof_structural_bound")}, ${t("proof_exchange_argument")} e ${t("proof_cache_exchange")} aparecem apenas nas regras ótimas ou de referência; heurísticas mostram a comparação com o benchmark correspondente.</p>
         `;
       }
     
       return `
-        <p>Choose one of the three problems, then select a greedy rule and an instance. The sorting step is already reflected in the code and data-structure view.</p>
+        <p>Choose one of the five problems, then select a greedy rule and an instance. For scheduling problems, the sorting step is already reflected in the code and data-structure view; for caching problems, the request sequence is processed one access at a time.</p>
         <ul>
           <li><strong>Run step</strong>: advances one step and highlights the corresponding pseudocode line.</li>
           <li><strong>Auto run</strong>: replays the algorithm continuously at the selected speed.</li>
           <li><strong>Run to completion</strong>: jumps directly to the final state and final solution.</li>
-          <li><strong>CSV</strong>: for interval problems use <code>id,start,finish</code>; for lateness use <code>job,length,deadline</code>. The header row is optional.</li>
+          <li><strong>CSV</strong>: for interval problems use <code>id,start,finish</code>; for lateness use <code>job,length,deadline</code>; for caching use <code>n_elements,cache_size,queue</code>. The header row is optional.</li>
+          <li><strong>Settings rail</strong>: use the top toggle button to collapse or restore the lateral settings panel.</li>
         </ul>
         <p>The four tabs serve different teaching goals:</p>
         <ul>
           <li><strong>Code</strong>: pseudocode, focal item, and the evolving data structure.</li>
-          <li><strong>Intervals</strong>: timeline diagram of choices, rejections, rooms, or lateness.</li>
-          <li><strong>Graph</strong>: conflict graph for interval problems and inversion graph for maximum lateness.</li>
-          <li><strong>Proof</strong>: visualization of the three correctness arguments used in the references.</li>
+          <li><strong>Intervals / Cache</strong>: timeline diagrams for scheduling and cache-state visualizations for the caching problems.</li>
+          <li><strong>Graph</strong>: shown only for the scheduling problems.</li>
+          <li><strong>Proof</strong>: visualization of the correctness arguments used in the references, including Belady’s exchange argument.</li>
         </ul>
-        <p>${t("proof_stays_ahead")}, ${t("proof_structural_bound")}, and ${t("proof_exchange_argument")} are shown only for the optimal rules; heuristics show comparison against the optimal benchmark.</p>
+        <p>${t("proof_stays_ahead")}, ${t("proof_structural_bound")}, ${t("proof_exchange_argument")}, and ${t("proof_cache_exchange")} are shown only for the optimal or benchmark rules; heuristics show comparison against the corresponding benchmark.</p>
       `;
     }
     
@@ -1726,16 +2482,15 @@
           <p><strong>Principais referências</strong></p>
           <ol>
             <li><em>Algorithm Design</em>, Jon Kleinberg e Éva Tardos, Capítulo 4.</li>
-            <li>Slides de Projeto e Análise de Algoritmos I.</li>
-            <li>Implementações de referência em Python para os algoritmos de intervalos.</li>
-            <li>Demonstração da estratégia que termina mais cedo.</li>
-            <li>Demonstração da estratégia que inicia mais cedo.</li>
+            <li>Material de aula de Projeto e Análise de Algoritmos I sobre algoritmos gulosos.</li>
+            <li>Discussões clássicas sobre caching, incluindo a regra de Belady e a motivação prática para LRU.</li>
           </ol>
           <p><strong>Observações</strong></p>
           <ul>
             <li>A prova ótima para escalonamento de intervalos usa o argumento “fica à frente”.</li>
             <li>A prova ótima para particionamento usa a profundidade como limite estrutural.</li>
             <li>A prova ótima para minimizar atraso usa argumento da troca sobre inversões adjacentes.</li>
+            <li>A prova ótima para caching usa o argumento da troca do Farthest-in-Future.</li>
           </ul>
           <p><strong>Veja mais algoritmos</strong></p>
           <p><a href="https://github.com/BrunoGrisci/projeto-e-analise-de-algoritmos" target="_blank" rel="noopener noreferrer">https://github.com/BrunoGrisci/projeto-e-analise-de-algoritmos</a></p>
@@ -1746,16 +2501,15 @@
         <p><strong>Main references</strong></p>
         <ol>
           <li><em>Algorithm Design</em>, Jon Kleinberg and Éva Tardos, Chapter 4.</li>
-          <li>Lecture slides for Projeto e Análise de Algoritmos I.</li>
-          <li>Python reference implementations of the interval algorithms.</li>
-          <li>Demo of the earliest-finish-time-first strategy.</li>
-          <li>Demo of the earliest-start-time-first strategy.</li>
+          <li>Course material for Projeto e Análise de Algoritmos I on greedy algorithms.</li>
+          <li>Classic caching discussions covering Belady’s rule and the practical motivation for LRU.</li>
         </ol>
         <p><strong>Notes</strong></p>
         <ul>
           <li>The optimal proof for interval scheduling uses the stays-ahead argument.</li>
           <li>The optimal proof for interval partitioning uses depth as a structural lower bound.</li>
           <li>The optimal proof for minimizing lateness uses an exchange argument on adjacent inversions.</li>
+          <li>The optimal proof for caching uses the exchange argument behind Farthest-in-Future.</li>
         </ul>
         <p><strong>See more algorithms</strong></p>
         <p><a href="https://github.com/BrunoGrisci/projeto-e-analise-de-algoritmos" target="_blank" rel="noopener noreferrer">https://github.com/BrunoGrisci/projeto-e-analise-de-algoritmos</a></p>
@@ -1860,6 +2614,18 @@
     }
     
     function buildPseudocode(problemId, algorithm, t) {
+      if (problemId === "optimalCaching" || problemId === "realCaching") {
+        return [
+          { text: t("code_cache_1", { size: algorithm.cacheSize ?? "k" }), indent: 0 },
+          { text: t("code_cache_2"), indent: 0 },
+          { text: t("code_cache_3"), indent: 1 },
+          { text: t("code_cache_4"), indent: 2 },
+          { text: t("code_cache_5"), indent: 2 },
+          { text: t("code_cache_6"), indent: 3 },
+          { text: t("code_cache_7", { rule: t(algorithm.ruleKey) }), indent: 2 },
+          { text: t("code_cache_8"), indent: 0 },
+        ];
+      }
       if (problemId === "intervalScheduling") {
         return [
           { text: t("code_sched_1", { rule: t(algorithm.comparatorKey) }), indent: 0 },
@@ -1892,6 +2658,145 @@
         { text: t("code_late_7"), indent: 1 },
         { text: t("code_late_8"), indent: 0 },
       ];
+    }
+    
+    function getCacheRequestStatus(index, stepState) {
+      if (!stepState) {
+        return "pending";
+      }
+      if (stepState.currentIndex === index) {
+        return "current";
+      }
+      if (index < (stepState.processedCount ?? 0)) {
+        const outcome = stepState.requestOutcomes?.[index]?.outcome;
+        if (outcome === "hit") {
+          return "scheduled";
+        }
+        if (outcome?.startsWith("miss")) {
+          return "rejected";
+        }
+        return "processed";
+      }
+      return "pending";
+    }
+    
+    function getCacheOutcomeLabelKey(outcome) {
+      if (!outcome) {
+        return "status_pending";
+      }
+      return `cache_outcome_${String(outcome).replaceAll("-", "_")}`;
+    }
+    
+    function getActiveCacheStepOutcome(stepState) {
+      if (!stepState || stepState.currentIndex == null) {
+        return null;
+      }
+      return stepState.requestOutcomes?.[stepState.currentIndex]?.outcome ?? null;
+    }
+    
+    function getActiveCacheSlot(stepState) {
+      const activeOutcome = getActiveCacheStepOutcome(stepState);
+      if (!activeOutcome || !stepState?.currentRequest) {
+        return { index: -1, outcome: null };
+      }
+    
+      const cache = stepState.cache ?? [];
+      const targetValue = activeOutcome === "hit" ? stepState.currentRequest : (stepState.lastLoaded ?? stepState.currentRequest);
+      const index = cache.indexOf(targetValue);
+      return {
+        index,
+        outcome: activeOutcome === "hit" ? "hit" : "miss",
+      };
+    }
+    
+    function renderCacheDataChips(simulation, step, t) {
+      return `
+        <div class="chip-grid">
+          <div class="data-chip"><span>${t("state_cache_capacity")}</span><strong>${simulation.instance.cacheSize}</strong></div>
+          <div class="data-chip"><span>${t("state_hits")}</span><strong>${step.state.hits ?? 0}</strong></div>
+          <div class="data-chip"><span>${t("state_misses")}</span><strong>${step.state.misses ?? 0}</strong></div>
+        </div>
+      `;
+    }
+    
+    function renderCacheRequestList(simulation, step, t) {
+      return `
+        <div class="item-card-grid">
+          ${simulation.items
+            .map((item, index) => {
+              const status = getCacheRequestStatus(index, step.state);
+              const outcome = step.state.requestOutcomes?.[index];
+              return `
+                <article class="item-card status-${status}">
+                  <div class="item-card-head">
+                    <strong>${t("request_label_short", { index: index + 1 })}</strong>
+                    <span>${escapeHtml(item.value)}</span>
+                  </div>
+                  <p>${t("header_request_index")}: ${index + 1}</p>
+                  <p>${t("header_outcome")}: ${t(getCacheOutcomeLabelKey(outcome?.outcome))}</p>
+                </article>
+              `;
+            })
+            .join("")}
+        </div>
+      `;
+    }
+    
+    function renderCacheCodeView(problemId, algorithm, simulation, step, t) {
+      const lines = buildPseudocode(problemId, algorithm, t);
+      const currentRequest = step.state.currentRequest ? escapeHtml(step.state.currentRequest) : t("state_none");
+      const cacheNow = step.state.cache?.length
+        ? step.state.cache.map((value) => `<span class="pill room">${escapeHtml(value)}</span>`).join("")
+        : `<span class="muted">${t("empty_cache")}</span>`;
+    
+      return `
+        <div class="code-layout split-layout" id="codeSplit">
+          <section class="subpanel" data-pane="primary">
+            <h3>${t("view_code")}</h3>
+            <ol class="code-list">
+              ${lines
+                .map(
+                  (line, index) => `
+                    <li class="${step.line === index + 1 ? "active" : ""}" style="--code-indent:${line.indent}">
+                      <span class="line-no">${index + 1}</span>
+                      <code class="code-content">${escapeHtml(line.text)}</code>
+                    </li>
+                  `,
+                )
+                .join("")}
+            </ol>
+          </section>
+          <div
+            class="resize-handle resize-handle-x"
+            data-resize-target="codeSplit"
+            data-resize-axis="x"
+            data-resize-var="--code-left"
+            data-resize-pane="[data-pane='primary']"
+            data-min="280"
+            data-max="920"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize code and data panels"
+          ></div>
+          <section class="subpanel">
+            <h3>${t("data_structure_title")}</h3>
+            ${renderCacheDataChips(simulation, step, t)}
+            <div class="subpanel">
+              <h3>${t("cache_current_request")}</h3>
+              <div class="pill-row"><span class="pill warning">${currentRequest}</span></div>
+              <p class="muted">${step.state.lastEvicted ? t("cache_evicted_sentence", { value: step.state.lastEvicted }) : t("cache_no_eviction")}</p>
+            </div>
+            <div class="subpanel">
+              <h3>${t("cache_current_contents")}</h3>
+              <div class="pill-row">${cacheNow}</div>
+            </div>
+            <div class="subpanel">
+              <h3>${t("cache_request_stream")}</h3>
+              ${renderCacheRequestList(simulation, step, t)}
+            </div>
+          </section>
+        </div>
+      `;
     }
     
     function buildTimelineBounds(problemId, simulation, stepState) {
@@ -2082,6 +2987,9 @@
     }
     
     function renderCodeView(problemId, algorithm, simulation, step, t) {
+      if (problemId === "optimalCaching" || problemId === "realCaching") {
+        return renderCacheCodeView(problemId, algorithm, simulation, step, t);
+      }
       const lines = buildPseudocode(problemId, algorithm, t);
       const displayItems = getDisplayItems(simulation, step.state);
       return `
@@ -2310,7 +3218,149 @@
       );
     }
     
+    function renderCacheSvg(problemId, simulation, step, t, boardState) {
+      const showFutureQueue = problemId === "optimalCaching";
+      const cacheSize = simulation.instance.cacheSize;
+      const requests = simulation.instance.requests;
+      const currentRequest = step.state.currentRequest ?? "—";
+      const cache = step.state.cache ?? [];
+      const hits = step.state.hits ?? 0;
+      const misses = step.state.misses ?? 0;
+      const activeOutcome = getActiveCacheStepOutcome(step.state);
+      const activeSlot = getActiveCacheSlot(step.state);
+      const queueBoxSize = 62;
+      const queueGap = 18;
+      const slotWidth = 156;
+      const slotHeight = 86;
+      const slotGap = 24;
+      const metricWidth = 196;
+      const metricHeight = 78;
+      const metricGap = 30;
+      const incomingWidth = 154;
+      const incomingHeight = 92;
+      const queueRowWidth = requests.length > 0 ? requests.length * queueBoxSize + (requests.length - 1) * queueGap : queueBoxSize;
+      const cacheRowWidth = cacheSize * slotWidth + Math.max(0, cacheSize - 1) * slotGap;
+      const metricsWidth = metricWidth * 2 + metricGap;
+      const dominantWidth = Math.max(queueRowWidth, cacheRowWidth, metricsWidth, incomingWidth, 520);
+      const width = Math.max(showFutureQueue ? 1180 : 980, dominantWidth + 360);
+      const height = showFutureQueue ? 520 : 450;
+      const centerX = width / 2;
+      const queueStart = centerX - queueRowWidth / 2;
+      const cacheStart = centerX - cacheRowWidth / 2;
+      const metricsStart = centerX - metricsWidth / 2;
+    
+      const queueBoxes = showFutureQueue
+        ? requests
+            .map((value, index) => {
+              const x = queueStart + index * (queueBoxSize + queueGap);
+              const status = getCacheRequestStatus(index, step.state);
+              const isActiveResolved = step.state.currentIndex === index && Boolean(activeOutcome);
+              const classes = isActiveResolved
+                ? `status-${activeOutcome === "hit" ? "scheduled" : "rejected"} cache-request-active cache-request-${activeOutcome === "hit" ? "hit" : "miss"}`
+                : status === "current"
+                  ? "status-current"
+                  : status === "scheduled"
+                    ? "status-scheduled"
+                    : status === "rejected"
+                      ? "status-rejected"
+                      : "partition-preview";
+              return `
+                <g>
+                  <rect x="${x}" y="114" width="${queueBoxSize}" height="${queueBoxSize}" rx="16" class="interval-bar ${classes}"></rect>
+                  <text x="${x + queueBoxSize / 2}" y="151" text-anchor="middle" class="bar-label">${escapeHtml(value)}</text>
+                </g>
+              `;
+            })
+            .join("")
+        : `
+          <g>
+            <text x="${centerX}" y="116" class="cache-section-label" text-anchor="middle">${t("cache_incoming_request")}</text>
+            <rect
+              x="${centerX - incomingWidth / 2}"
+              y="144"
+              width="${incomingWidth}"
+              height="${incomingHeight}"
+              rx="24"
+              class="interval-bar ${
+                activeOutcome
+                  ? `status-${activeOutcome === "hit" ? "scheduled" : "rejected"} cache-request-active cache-request-${activeOutcome === "hit" ? "hit" : "miss"}`
+                  : "status-current"
+              }"
+            ></rect>
+            <text x="${centerX}" y="201" text-anchor="middle" class="bar-label">${escapeHtml(currentRequest)}</text>
+          </g>
+        `;
+    
+      const cacheSlots = Array.from({ length: cacheSize }, (_, index) => {
+        const value = cache[index] ?? "";
+        const x = cacheStart + index * (slotWidth + slotGap);
+        const isActive = index === activeSlot.index && Boolean(activeSlot.outcome);
+        return `
+          <g>
+            <rect
+              x="${x}"
+              y="${showFutureQueue ? 286 : 262}"
+              width="${slotWidth}"
+              height="${slotHeight}"
+              rx="22"
+              class="cache-slot${isActive ? ` cache-slot-active cache-slot-${activeSlot.outcome}` : ""}"
+            ></rect>
+            ${value ? `<text x="${x + slotWidth / 2}" y="${showFutureQueue ? 338 : 314}" text-anchor="middle" class="bar-label">${escapeHtml(value)}</text>` : `<text x="${x + slotWidth / 2}" y="${showFutureQueue ? 338 : 314}" text-anchor="middle" class="axis-label">—</text>`}
+          </g>
+        `;
+      }).join("");
+    
+      const metricChips = [
+        { x: metricsStart, label: t("state_misses"), value: misses },
+        { x: metricsStart + metricWidth + metricGap, label: t("state_hits"), value: hits },
+      ]
+        .map(
+          ({ x, label, value }) => `
+            <g>
+              <rect x="${x}" y="${showFutureQueue ? 412 : 386}" width="${metricWidth}" height="${metricHeight}" rx="24" class="cache-metric-chip"></rect>
+              <text x="${x + metricWidth / 2}" y="${showFutureQueue ? 440 : 414}" text-anchor="middle" class="cache-metric-label">${escapeHtml(label)}</text>
+              <text x="${x + metricWidth / 2}" y="${showFutureQueue ? 474 : 448}" text-anchor="middle" class="cache-metric-value">${value}</text>
+            </g>
+          `,
+        )
+        .join("");
+    
+      const note =
+        (step.state.processedCount ?? 0) === 0
+          ? t("step_ready")
+          : step.state.lastOutcome === "hit"
+            ? t("cache_hit_banner", { hits, misses })
+            : t("cache_miss_banner", { hits, misses });
+    
+      return renderBoardFigure(
+        "interval",
+        `
+          <div class="legend-row">
+            <span class="legend-item"><i class="swatch status-scheduled"></i>${t("cache_legend_hit")}</span>
+            <span class="legend-item"><i class="swatch status-rejected"></i>${t("cache_legend_miss")}</span>
+            <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
+          </div>
+        `,
+        `
+          <svg viewBox="0 0 ${width} ${height}" class="timeline-svg cache-svg" data-board-svg aria-label="${t("view_cache")}">
+            ${showFutureQueue ? `<text x="${centerX}" y="74" class="cache-section-label" text-anchor="middle">${t("cache_future_queue")}</text>` : ""}
+            ${queueBoxes}
+            <text x="${centerX}" y="${showFutureQueue ? 248 : 234}" class="cache-section-label" text-anchor="middle">${t("cache_contents_label")}</text>
+            ${cacheSlots}
+            ${metricChips}
+          </svg>
+        `,
+        boardState,
+        t,
+        "",
+        note,
+      );
+    }
+    
     function renderIntervalView(problemId, simulation, step, t, boardState) {
+      if (problemId === "optimalCaching" || problemId === "realCaching") {
+        return renderCacheSvg(problemId, simulation, step, t, boardState);
+      }
       if (problemId === "intervalScheduling") {
         return renderIntervalSchedulingSvg(simulation, step, t, boardState);
       }
@@ -2477,6 +3527,67 @@
         `;
       }
     
+      if (problemId === "optimalCaching") {
+        return `
+          <div class="proof-grid">
+            <article class="proof-card">
+              <h3>${t("proof_cache_exchange_title")}</h3>
+              <p>${t("proof_cache_exchange_body")}</p>
+              <p>${t("proof_cache_reduced")}</p>
+              <p>${t("proof_cache_transform")}</p>
+            </article>
+            <article class="proof-card">
+              <h3>${t("proof_conclusion_title")}</h3>
+              <p>${t("proof_cache_conclusion", { misses: simulation.result.objectiveValue })}</p>
+              <div class="proof-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>${t("header_request_index")}</th>
+                      <th>${t("header_request")}</th>
+                      <th>${t("header_cache_before")}</th>
+                      <th>${t("header_evicted")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${
+                      simulation.proof.evictionEvents
+                        .map(
+                          (event) => `
+                            <tr>
+                              <td>${event.requestIndex}</td>
+                              <td>${escapeHtml(event.requestValue)}</td>
+                              <td>${event.cacheBefore.map((value) => escapeHtml(value)).join(", ")}</td>
+                              <td>${escapeHtml(event.victim)}</td>
+                            </tr>
+                          `,
+                        )
+                        .join("") || `<tr><td colspan="4">${t("proof_no_rows")}</td></tr>`
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        `;
+      }
+    
+      if (problemId === "realCaching") {
+        return `
+          <div class="proof-grid">
+            <article class="proof-card">
+              <h3>${t("proof_operating_benchmark_title")}</h3>
+              <p>${t("proof_operating_benchmark_body")}</p>
+              <p>${t("proof_operating_benchmark_note")}</p>
+            </article>
+            <article class="proof-card">
+              <h3>${t("proof_conclusion_title")}</h3>
+              <p>${t("proof_real_cache_conclusion", { misses: simulation.result.objectiveValue, best: simulation.optimal.objectiveValue })}</p>
+            </article>
+          </div>
+        `;
+      }
+    
       if (problemId === "intervalScheduling") {
         return `
           <div class="proof-grid">
@@ -2591,7 +3702,10 @@
     }
     
     function renderStateSummary(problemId, simulation, step, t) {
-      const current = step.state.currentId ? escapeHtml(step.state.currentId) : t("state_none");
+      const current =
+        problemId === "optimalCaching" || problemId === "realCaching"
+          ? (step.state.currentRequest ? escapeHtml(step.state.currentRequest) : t("state_none"))
+          : (step.state.currentId ? escapeHtml(step.state.currentId) : t("state_none"));
       let items = `
         <div class="state-row"><span>${t("state_current_item")}</span><strong>${current}</strong></div>
         <div class="state-row"><span>${t("state_step_message")}</span><strong>${t(step.messageKey, step.params)}</strong></div>
@@ -2613,11 +3727,17 @@
           <div class="state-row"><span>${t("state_assigned")}</span><strong>${step.state.assignedIds?.length ?? 0}</strong></div>
           <div class="state-row"><span>${t("state_depth_bound")}</span><strong>${simulation.optimal.objectiveValue}</strong></div>
         `;
-      } else {
+      } else if (problemId === "minimizeLateness") {
         items += `
           <div class="state-row"><span>${t("state_time")}</span><strong>${formatValue(step.state.time)}</strong></div>
           <div class="state-row"><span>${t("state_scheduled_jobs")}</span><strong>${step.state.scheduled?.length ?? 0}</strong></div>
           <div class="state-row"><span>${t("state_max_lateness")}</span><strong>${formatValue(step.state.maxLateness)}</strong></div>
+        `;
+      } else {
+        items += `
+          <div class="state-row"><span>${t("state_cache_capacity")}</span><strong>${simulation.instance.cacheSize}</strong></div>
+          <div class="state-row"><span>${t("state_hits")}</span><strong>${step.state.hits ?? 0}</strong></div>
+          <div class="state-row"><span>${t("state_misses")}</span><strong>${step.state.misses ?? 0}</strong></div>
         `;
       }
     
@@ -2625,6 +3745,38 @@
     }
     
     function renderInstanceTable(problemId, simulation, step, t) {
+      if (problemId === "optimalCaching" || problemId === "realCaching") {
+        return `
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>${t("header_request_index")}</th>
+                <th>${t("header_request")}</th>
+                <th>${t("header_outcome")}</th>
+                <th>${t("header_evicted")}</th>
+                <th>${t("header_cache_after")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${simulation.items
+                .map((item, index) => {
+                  const outcome = step.state.requestOutcomes?.[index];
+                  const status = getCacheRequestStatus(index, step.state);
+                  return `
+                    <tr class="status-${status}">
+                      <td>${index + 1}</td>
+                      <td>${escapeHtml(item.value)}</td>
+                      <td>${outcome ? t(getCacheOutcomeLabelKey(outcome.outcome)) : "—"}</td>
+                      <td>${outcome?.evicted ? escapeHtml(outcome.evicted) : "—"}</td>
+                      <td>${outcome ? outcome.cacheAfter.map((value) => escapeHtml(value)).join(", ") : "—"}</td>
+                    </tr>
+                  `;
+                })
+                .join("")}
+            </tbody>
+          </table>
+        `;
+      }
       const roomAssignments = getRoomAssignmentMap(step.state.rooms);
       const displayItems = getDisplayItems(simulation, step.state);
       if (problemId === "minimizeLateness") {
@@ -2730,6 +3882,9 @@
         return renderIntervalView(problemId, simulation, step, t, boardState);
       }
       if (viewMode === "graph") {
+        if (problemId === "optimalCaching" || problemId === "realCaching") {
+          return renderIntervalView(problemId, simulation, step, t, boardState);
+        }
         return renderConflictGraph(problemId, simulation, step, t, boardState);
       }
       return renderProofView(problemId, algorithm, simulation, step, t);
@@ -2737,7 +3892,7 @@
     return { renderSummaryCards, renderStateSummary, renderInstanceTable, renderStepLog, renderView };
   })();
   (() => {
-    const { ALGORITHMS, LANGUAGES, PRESETS, PROBLEMS, SPEED_OPTIONS, STORAGE_KEYS, VIEW_MODES, buildRandomInstance, clampRandomSize, getAlgorithm, getDefaultPresetId, getPreset, parseCsvText } = __module_data;
+    const { ALGORITHMS, LANGUAGES, PRESETS, PROBLEMS, SPEED_OPTIONS, STORAGE_KEYS, VIEW_MODES, buildRandomInstance, clampRandomSize, getAlgorithm, getAvailableViewModes, getCacheConfigFromItems, getDefaultPresetId, getPreset, isCachingProblem, normalizeCacheConfig, parseCsvText } = __module_data;
     const { simulateProblem } = __module_algorithms;
     const { createTranslator, getHelpHtml, getReferencesHtml } = __module_i18n;
     const { renderInstanceTable, renderStateSummary, renderStepLog, renderSummaryCards, renderView } = __module_render;
@@ -2746,15 +3901,21 @@
     }
     
     const elements = {
+      mainLayout: document.getElementById("mainLayout"),
       eyebrowText: document.getElementById("eyebrowText"),
       appTitle: document.getElementById("appTitle"),
       appSubtitle: document.getElementById("appSubtitle"),
+      settingsToggleBtn: document.getElementById("settingsToggleBtn"),
+      settingsShell: document.getElementById("settingsShell"),
       controlsKicker: document.getElementById("controlsKicker"),
       controlsTitle: document.getElementById("controlsTitle"),
       problemLabel: document.getElementById("problemLabel"),
       algorithmLabel: document.getElementById("algorithmLabel"),
       presetLabel: document.getElementById("presetLabel"),
       randomSizeLabel: document.getElementById("randomSizeLabel"),
+      cacheSizeLabel: document.getElementById("cacheSizeLabel"),
+      cacheUniverseLabel: document.getElementById("cacheUniverseLabel"),
+      queueSizeLabel: document.getElementById("queueSizeLabel"),
       randomActionLabel: document.getElementById("randomActionLabel"),
       generateRandomBtn: document.getElementById("generateRandomBtn"),
       csvLabel: document.getElementById("csvLabel"),
@@ -2769,8 +3930,14 @@
       algorithmSelect: document.getElementById("algorithmSelect"),
       presetSelect: document.getElementById("presetSelect"),
       randomSizeInput: document.getElementById("randomSizeInput"),
+      randomSizeField: document.getElementById("randomSizeField"),
+      cacheSizeInput: document.getElementById("cacheSizeInput"),
+      cacheUniverseInput: document.getElementById("cacheUniverseInput"),
+      queueSizeInput: document.getElementById("queueSizeInput"),
       csvInput: document.getElementById("csvInput"),
       speedSelect: document.getElementById("speedSelect"),
+      scheduleRandomRow: document.getElementById("scheduleRandomRow"),
+      cacheConfigGrid: document.getElementById("cacheConfigGrid"),
       summaryCards: document.getElementById("summaryCards"),
       statusBanner: document.getElementById("statusBanner"),
       viewTabs: [...document.querySelectorAll("#viewTabs .tab")],
@@ -2809,6 +3976,7 @@
       ? localStorage.getItem(STORAGE_KEYS.language)
       : "en";
     const initialTheme = localStorage.getItem(STORAGE_KEYS.theme) === "dark" ? "dark" : "light";
+    const initialSettingsCollapsed = localStorage.getItem(STORAGE_KEYS.settingsCollapsed) === "true";
     const initialProblemId = "intervalScheduling";
     const initialAlgorithmId = ALGORITHMS[initialProblemId][0].id;
     const initialPresetId = getDefaultPresetId(initialProblemId);
@@ -2826,6 +3994,7 @@
       detailMode: "summary",
       stepIndex: 0,
       simulation: simulateProblem(initialProblemId, initialAlgorithmId, initialItems),
+      settingsCollapsed: initialSettingsCollapsed,
       autoRunHandle: null,
       autoRunning: false,
       speed: 1,
@@ -2853,6 +4022,20 @@
       log: "details_log",
     };
     
+    const VIEW_LABEL_KEYS = {
+      code: "view_code",
+      interval: null,
+      graph: "view_graph",
+      proof: "view_proof",
+    };
+    
+    const VIEW_TITLE_KEYS = {
+      code: "view_title_code",
+      interval: null,
+      graph: "view_title_graph",
+      proof: "view_title_proof",
+    };
+    
     function setStatus(key, params = {}) {
       state.statusKey = key;
       state.statusParams = params;
@@ -2866,6 +4049,34 @@
       document.body.dataset.theme = state.theme;
       localStorage.setItem(STORAGE_KEYS.theme, state.theme);
       elements.themeToggle.textContent = state.theme === "dark" ? "☾" : "☀";
+    }
+    
+    function syncCacheControlsFromItems() {
+      if (!isCachingProblem(state.problemId)) {
+        elements.randomSizeInput.value = String(Array.isArray(state.items) ? state.items.length : clampRandomSize(Number(elements.randomSizeInput.value)));
+        return;
+      }
+    
+      const config = getCacheConfigFromItems(state.items);
+      elements.cacheUniverseInput.value = String(config.universeSize);
+      elements.cacheSizeInput.value = String(config.cacheSize);
+      elements.queueSizeInput.value = String(config.queueSize);
+    }
+    
+    function ensureSupportedView() {
+      const availableViewModes = getAvailableViewModes(state.problemId);
+      if (!availableViewModes.includes(state.viewMode)) {
+        state.viewMode = availableViewModes[0];
+      }
+    }
+    
+    function applySettingsCollapsed() {
+      elements.mainLayout.classList.toggle("settings-collapsed", state.settingsCollapsed);
+      elements.settingsShell.hidden = state.settingsCollapsed;
+      elements.settingsToggleBtn.setAttribute("aria-pressed", state.settingsCollapsed ? "true" : "false");
+      elements.settingsToggleBtn.setAttribute("aria-expanded", state.settingsCollapsed ? "false" : "true");
+      elements.settingsToggleBtn.setAttribute("title", state.t(state.settingsCollapsed ? "settings_toggle_show" : "settings_toggle_hide"));
+      localStorage.setItem(STORAGE_KEYS.settingsCollapsed, String(state.settingsCollapsed));
     }
     
     function populateProblemOptions() {
@@ -3086,15 +4297,22 @@
     
     function updateStaticText() {
       const t = state.t;
+      const problem = getCurrentProblem();
+      const supportsGraph = problem.supportsGraph !== false;
       elements.eyebrowText.textContent = t("eyebrow");
       elements.appTitle.textContent = t("app_title");
       elements.appSubtitle.textContent = t("app_subtitle");
+      elements.settingsToggleBtn.textContent = state.settingsCollapsed ? "»" : "«";
+      elements.settingsToggleBtn.setAttribute("aria-label", t(state.settingsCollapsed ? "settings_toggle_show" : "settings_toggle_hide"));
       elements.controlsKicker.textContent = t("controls_kicker");
       elements.controlsTitle.textContent = t("controls_title");
       elements.problemLabel.textContent = t("problem_label");
       elements.algorithmLabel.textContent = t("algorithm_label");
       elements.presetLabel.textContent = t("preset_label");
       elements.randomSizeLabel.textContent = t("random_size_label");
+      elements.cacheSizeLabel.textContent = t("cache_size_label");
+      elements.cacheUniverseLabel.textContent = t("cache_universe_label");
+      elements.queueSizeLabel.textContent = t("queue_size_label");
       elements.randomActionLabel.textContent = t("random_action_label");
       elements.generateRandomBtn.textContent = t("random_btn");
       elements.csvLabel.textContent = t("csv_label");
@@ -3103,10 +4321,15 @@
       elements.completeBtn.textContent = t("complete_btn");
       elements.speedLabel.textContent = t("speed_label");
       elements.stepCounterLabel.textContent = t("step_counter_label");
-      elements.viewTabs[0].textContent = t("view_code");
-      elements.viewTabs[1].textContent = t("view_interval");
-      elements.viewTabs[2].textContent = t("view_graph");
-      elements.viewTabs[3].textContent = t("view_proof");
+      elements.viewTabs.forEach((tab) => {
+        const key = tab.dataset.view === "interval" ? problem.primaryViewLabelKey : VIEW_LABEL_KEYS[tab.dataset.view];
+        if (key) {
+          tab.textContent = t(key);
+        }
+        const supported = supportsGraph || tab.dataset.view !== "graph";
+        tab.hidden = !supported;
+        tab.disabled = !supported;
+      });
       elements.viewKicker.textContent = t("view_kicker");
       elements.viewCaption.textContent = t("board_caption");
       elements.detailsKicker.textContent = t("details_kicker");
@@ -3125,6 +4348,10 @@
       elements.helpContent.innerHTML = getHelpHtml(state.language, t);
       elements.referencesContent.innerHTML = getReferencesHtml(state.language);
       elements.themeToggle.setAttribute("aria-label", state.theme === "dark" ? "Switch to light theme" : "Switch to dark theme");
+      const cachingProblem = isCachingProblem(state.problemId);
+      elements.randomSizeField.hidden = cachingProblem;
+      elements.scheduleRandomRow.classList.toggle("single-action-row", cachingProblem);
+      elements.cacheConfigGrid.hidden = !cachingProblem;
     }
     
     function updateLiveBadge() {
@@ -3201,12 +4428,12 @@
       const algorithm = getCurrentAlgorithm();
       const preset = getCurrentPreset();
       const currentStep = state.simulation.steps[state.stepIndex];
-    
       populateProblemOptions();
       populateAlgorithmOptions();
       populatePresetOptions();
       populateSpeedOptions();
       updateStaticText();
+      applySettingsCollapsed();
     
       elements.langEnBtn.classList.toggle("active", state.language === "en");
       elements.langPtBtn.classList.toggle("active", state.language === "pt-BR");
@@ -3224,7 +4451,8 @@
         pane.classList.toggle("active", pane.dataset.detailPanel === state.detailMode);
       });
       elements.autoBtn.textContent = t(state.autoRunning ? "stop_btn" : "auto_btn");
-      elements.viewTitle.textContent = t(`view_title_${state.viewMode}`);
+      const viewTitleKey = state.viewMode === "interval" ? problem.primaryViewTitleKey : VIEW_TITLE_KEYS[state.viewMode];
+      elements.viewTitle.textContent = t(viewTitleKey);
       const currentOperationCount = currentStep?.operationCount ?? state.simulation.operationTotal ?? 0;
       const totalOperationCount = state.simulation.operationTotal ?? currentOperationCount;
       elements.stepCounterValue.textContent = `${currentOperationCount} / ${totalOperationCount}`;
@@ -3278,6 +4506,8 @@
       state.algorithmId = ALGORITHMS[problemId][0].id;
       state.presetId = getDefaultPresetId(problemId);
       state.items = cloneData(getPreset(problemId, state.presetId)?.items ?? []);
+      ensureSupportedView();
+      syncCacheControlsFromItems();
       resetBoardOffsets(problemId);
       refreshSimulation(true);
       setStatus("banner_preset_loaded");
@@ -3288,6 +4518,7 @@
       stopAutoRun(true);
       stopBoardDrag();
       state.algorithmId = algorithmId;
+      ensureSupportedView();
       refreshSimulation(true);
       setStatus("banner_reset");
       render();
@@ -3298,6 +4529,7 @@
       stopBoardDrag();
       state.presetId = presetId;
       state.items = cloneData(getPreset(state.problemId, presetId)?.items ?? []);
+      syncCacheControlsFromItems();
       resetBoardOffsets();
       refreshSimulation(true);
       setStatus("banner_preset_loaded");
@@ -3307,10 +4539,22 @@
     function generateRandom() {
       stopAutoRun(true);
       stopBoardDrag();
-      const size = clampRandomSize(Number(elements.randomSizeInput.value));
-      elements.randomSizeInput.value = String(size);
       state.presetId = "";
-      state.items = buildRandomInstance(state.problemId, size);
+      if (isCachingProblem(state.problemId)) {
+        const config = normalizeCacheConfig({
+          universeSize: Number(elements.cacheUniverseInput.value),
+          cacheSize: Number(elements.cacheSizeInput.value),
+          queueSize: Number(elements.queueSizeInput.value),
+        });
+        elements.cacheUniverseInput.value = String(config.universeSize);
+        elements.cacheSizeInput.value = String(config.cacheSize);
+        elements.queueSizeInput.value = String(config.queueSize);
+        state.items = buildRandomInstance(state.problemId, config);
+      } else {
+        const size = clampRandomSize(Number(elements.randomSizeInput.value));
+        elements.randomSizeInput.value = String(size);
+        state.items = buildRandomInstance(state.problemId, size);
+      }
       resetBoardOffsets();
       refreshSimulation(true);
       setStatus("banner_random_loaded");
@@ -3327,6 +4571,7 @@
         const text = await file.text();
         state.items = parseCsvText(state.problemId, text);
         state.presetId = "";
+        syncCacheControlsFromItems();
         resetBoardOffsets();
         refreshSimulation(true);
         setStatus("banner_csv_loaded");
@@ -3381,6 +4626,11 @@
       queueAutoRun();
     }
     
+    function toggleSettingsPanel() {
+      state.settingsCollapsed = !state.settingsCollapsed;
+      applySettingsCollapsed();
+    }
+    
     function openModal(modal) {
       modal.hidden = false;
     }
@@ -3410,6 +4660,10 @@
       elements.algorithmSelect.addEventListener("change", (event) => switchAlgorithm(event.target.value));
       elements.presetSelect.addEventListener("change", (event) => switchPreset(event.target.value));
       elements.generateRandomBtn.addEventListener("click", generateRandom);
+      elements.settingsToggleBtn.addEventListener("click", () => {
+        toggleSettingsPanel();
+        render();
+      });
       elements.csvInput.addEventListener("change", (event) => importCsv(event.target.files?.[0]));
       elements.resetBtn.addEventListener("click", resetExecution);
       elements.stepBtn.addEventListener("click", stepForward);
@@ -3427,6 +4681,9 @@
     
       elements.viewTabs.forEach((tab) => {
         tab.addEventListener("click", () => {
+          if (tab.hidden) {
+            return;
+          }
           state.viewMode = tab.dataset.view;
           render();
         });
@@ -3482,6 +4739,8 @@
     function init() {
       updateTranslator();
       updateTheme();
+      syncCacheControlsFromItems();
+      ensureSupportedView();
       bindEvents();
       initResizableHandles(document);
       render();

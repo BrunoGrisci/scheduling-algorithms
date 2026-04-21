@@ -101,6 +101,38 @@ assert.deepEqual(
   ["b", "a", "c"],
 );
 
+const optimalCachingBelady = simulateProblem(
+  "optimalCaching",
+  "farthest-future",
+  PRESETS.optimalCaching[0].items,
+);
+assert.equal(optimalCachingBelady.result.objectiveValue, 4);
+assert.equal(optimalCachingBelady.optimal.objectiveValue, 4);
+
+const optimalCachingLru = simulateProblem(
+  "optimalCaching",
+  "least-recently-used",
+  PRESETS.optimalCaching[0].items,
+);
+assert.equal(optimalCachingLru.result.objectiveValue, 5);
+assert.equal(optimalCachingLru.optimal.objectiveValue, 4);
+
+const realCachingLru = simulateProblem(
+  "realCaching",
+  "least-recently-used",
+  PRESETS.realCaching[1].items,
+);
+assert.equal(realCachingLru.result.objectiveValue, 7);
+assert.equal(realCachingLru.optimal.objectiveValue, 7);
+
+const realCachingRandom = simulateProblem(
+  "realCaching",
+  "random-eviction",
+  PRESETS.realCaching[1].items,
+);
+assert.equal(realCachingRandom.result.objectiveValue, 8);
+assert.equal(realCachingRandom.optimal.objectiveValue, 7);
+
 const parsedIntervals = parseCsvText("intervalScheduling", "id,start,finish\nx,0,3\ny,3,4");
 assert.deepEqual(parsedIntervals, [
   { id: "x", start: 0, finish: 3 },
@@ -112,5 +144,12 @@ assert.deepEqual(parsedJobs, [
   { id: "a", duration: 3, deadline: 7 },
   { id: "b", duration: 2, deadline: 5 },
 ]);
+
+const parsedCache = parseCsvText("optimalCaching", "n_elements,cache_size,queue\n5,3,A B C D A D E");
+assert.deepEqual(parsedCache, {
+  universeSize: 5,
+  cacheSize: 3,
+  requests: ["A", "B", "C", "D", "A", "D", "E"],
+});
 
 console.log("All algorithm checks passed.");

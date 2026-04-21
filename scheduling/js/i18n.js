@@ -2,14 +2,19 @@ const TRANSLATIONS = {
   en: {
     app_title: "Scheduling Algorithms Visualizer",
     app_subtitle:
-      "Interactive visual explanations for interval scheduling, interval partitioning, and scheduling to minimize maximum lateness.",
+      "Interactive visual explanations for interval scheduling, interval partitioning, maximum lateness scheduling, and caching.",
     eyebrow: "Greedy Algorithms",
     controls_kicker: "Settings",
     controls_title: "Instance and playback",
+    settings_toggle_show: "Show settings panel",
+    settings_toggle_hide: "Hide settings panel",
     problem_label: "Problem",
     algorithm_label: "Greedy rule",
     preset_label: "Preset instance",
     random_size_label: "Random size",
+    cache_size_label: "Cache size",
+    cache_universe_label: "Different elements",
+    queue_size_label: "Queue size",
     random_action_label: "Generate",
     random_btn: "Random instance",
     csv_label: "Load CSV instance",
@@ -22,10 +27,12 @@ const TRANSLATIONS = {
     step_counter_label: "Operation count",
     view_code: "Code",
     view_interval: "Intervals",
+    view_cache: "Cache",
     view_graph: "Graph",
     view_proof: "Proof",
     view_title_code: "Code and data structure view",
     view_title_interval: "Interval diagram view",
+    view_title_cache: "Cache state view",
     view_title_graph: "Conflict graph view",
     view_title_proof: "Correctness proof view",
     view_kicker: "Visualization",
@@ -65,9 +72,15 @@ const TRANSLATIONS = {
     problem_interval_partitioning_subtitle: "Use the minimum number of rooms for all intervals.",
     problem_minimize_lateness: "Scheduling to Minimize Lateness",
     problem_minimize_lateness_subtitle: "Order all jobs to minimize the maximum lateness.",
+    problem_optimal_caching: "Optimal Caching",
+    problem_optimal_caching_subtitle: "Process the full request sequence with the future visible and minimize cache misses.",
+    problem_real_caching: "Caching under Real Operating Conditions",
+    problem_real_caching_subtitle: "Process requests online without showing the future queue.",
     objective_interval_scheduling: "Maximum number of compatible intervals",
     objective_interval_partitioning: "Minimum number of rooms",
     objective_minimize_lateness: "Minimum maximum lateness",
+    objective_optimal_caching: "Minimum number of cache misses",
+    objective_real_caching: "Minimum misses under operating conditions",
     algo_earliest_start: "Earliest start time first",
     algo_shortest_interval: "Shortest interval first",
     algo_fewest_conflicts: "Fewest conflicts first",
@@ -75,6 +88,10 @@ const TRANSLATIONS = {
     algo_shortest_duration: "Shortest job first",
     algo_smallest_slack: "Smallest slack first",
     algo_earliest_deadline: "Earliest deadline first",
+    algo_farthest_future: "Farthest-in-Future",
+    algo_lru: "Least-Recently-Used (LRU)",
+    algo_mru: "Most-Recently-Used",
+    algo_random_eviction: "Random eviction",
     rule_earliest_start: "Sort by increasing start time",
     rule_shortest_interval: "Sort by increasing interval length",
     rule_fewest_conflicts: "Sort by increasing number of conflicts",
@@ -82,6 +99,10 @@ const TRANSLATIONS = {
     rule_shortest_duration: "Sort by increasing processing time",
     rule_smallest_slack: "Sort by increasing slack d - t",
     rule_earliest_deadline: "Sort by increasing deadline",
+    rule_farthest_future: "On a miss, evict the item needed farthest in the future",
+    rule_lru: "On a miss, evict the least recently used cached item",
+    rule_mru: "On a miss, evict the most recently used cached item",
+    rule_random_eviction: "On a miss, evict a random cached item",
     comparator_start: "start time",
     comparator_finish: "finish time",
     comparator_length: "interval length",
@@ -89,12 +110,20 @@ const TRANSLATIONS = {
     comparator_duration: "processing time",
     comparator_slack: "slack",
     comparator_deadline: "deadline",
+    comparator_future_distance: "latest next use",
+    comparator_least_recent: "least recent access",
+    comparator_most_recent: "most recent access",
+    comparator_random: "random victim choice",
     proof_none: "No proof of optimality: heuristic only",
     proof_stays_ahead: "Proof style: stays ahead",
     proof_structural_bound: "Proof style: structural bound",
     proof_exchange_argument: "Proof style: exchange argument",
-    source_refs_intervalos_py: "Source: Python reference implementation",
-    source_refs_aulas_tex: "Source: lecture slides",
+    proof_cache_exchange: "Proof style: exchange argument on cache schedules",
+    proof_operating_benchmark: "Benchmark policy under operating conditions",
+    source_python_reference: "Source: Python reference implementation",
+    source_lecture_slides: "Source: lecture slides",
+    source_algorithm_design: "Source: Algorithm Design, Chapter 4",
+    source_classroom_reference: "Source: classroom reference instance",
     source_curated: "Source: curated classroom counterexample",
     source_generated: "Source: generated in the browser",
     preset_sched_refs_a: "Reference example A",
@@ -117,6 +146,14 @@ const TRANSLATIONS = {
     preset_late_slide_1_desc: "Shortest job and smallest slack are compared against earliest deadline.",
     preset_late_slide_2: "Slide instance 2",
     preset_late_slide_2_desc: "Second slide instance for lateness comparisons.",
+    preset_cache_book_short: "Book cache example 1",
+    preset_cache_book_short_desc: "The short three-item cache sequence from the book, starting with an empty cache.",
+    preset_cache_book_exchange: "Book cache example 2",
+    preset_cache_book_exchange_desc: "The exchange-argument sequence used to discuss Farthest-in-Future.",
+    preset_real_cache_short: "Operating-conditions example 1",
+    preset_real_cache_short_desc: "The short cache sequence, but revealed one request at a time.",
+    preset_real_cache_locality: "Operating-conditions locality example",
+    preset_real_cache_locality_desc: "A sequence with strong locality, where LRU should behave well.",
     preset_custom: "Current custom instance",
     card_objective: "Objective",
     card_rule: "Rule",
@@ -158,6 +195,14 @@ const TRANSLATIONS = {
     code_late_6: "update L with lateness(j)",
     code_late_7: "t = finish(j)",
     code_late_8: "return the schedule",
+    code_cache_1: "cache = empty structure of capacity k",
+    code_cache_2: "for each request d_i in sequence order",
+    code_cache_3: "if d_i is already in the cache",
+    code_cache_4: "register a hit",
+    code_cache_5: "otherwise register a miss",
+    code_cache_6: "if the cache has free space, insert d_i",
+    code_cache_7: "otherwise apply {rule} and insert d_i",
+    code_cache_8: "return the miss count",
     state_selected: "Selected intervals",
     state_rejected: "Rejected intervals",
     state_last_finish: "Last finish time",
@@ -168,6 +213,9 @@ const TRANSLATIONS = {
     state_scheduled_jobs: "Scheduled jobs",
     state_time: "Current time",
     state_max_lateness: "Maximum lateness",
+    state_cache_capacity: "Cache capacity",
+    state_hits: "Hits",
+    state_misses: "Misses",
     state_current_item: "Current item",
     state_step_message: "Current step",
     state_none: "None",
@@ -178,6 +226,7 @@ const TRANSLATIONS = {
     empty_selected: "No intervals selected yet.",
     empty_rooms: "No rooms opened yet.",
     empty_schedule: "No jobs scheduled yet.",
+    empty_cache: "The cache is empty.",
     room_label: "Room {room}",
     partition_preview_label: "Unassigned intervals",
     partition_rooms_label: "Open rooms",
@@ -201,6 +250,12 @@ const TRANSLATIONS = {
     header_slack: "Slack",
     header_completion: "Scheduled interval",
     header_lateness: "Lateness",
+    header_request_index: "Request #",
+    header_request: "Request",
+    header_outcome: "Outcome",
+    header_evicted: "Evicted",
+    header_cache_after: "Cache after",
+    header_cache_before: "Cache before",
     header_start_short: "s",
     header_finish_short: "f",
     header_length_short: "len",
@@ -209,6 +264,24 @@ const TRANSLATIONS = {
     header_deadline_short: "d",
     header_slack_short: "slack",
     header_lateness_short: "late",
+    request_label_short: "Request {index}",
+    cache_current_request: "Current request",
+    cache_current_contents: "Current cache",
+    cache_request_stream: "Reference stream",
+    cache_future_queue: "Future queue",
+    cache_incoming_request: "Incoming request",
+    cache_contents_label: "Cache contents",
+    cache_misses_label: "Misses: {value}",
+    cache_hits_label: "Hits: {value}",
+    cache_hit_banner: "Hit. Hits: {hits}; misses: {misses}.",
+    cache_miss_banner: "Miss. Hits: {hits}; misses: {misses}.",
+    cache_legend_hit: "Hit / already cached",
+    cache_legend_miss: "Miss / loaded now",
+    cache_evicted_sentence: "Evicted item: {value}.",
+    cache_no_eviction: "No eviction was needed at this step.",
+    cache_outcome_hit: "Hit",
+    cache_outcome_miss_load: "Miss, loaded into free slot",
+    cache_outcome_miss_evict: "Miss, evicted another item",
     step_sorted: "Sorted the input structure ({count} items).",
     step_ready: "Ready to start. The original input order is shown.",
     step_initialized: "Initialized the greedy state.",
@@ -220,6 +293,11 @@ const TRANSLATIONS = {
     step_open_room: "Opened room {roomId} for interval {id}.",
     step_consider_job: "Considering job {id}.",
     step_schedule_job: "Scheduled job {id} on [{start}, {finish}] with lateness {lateness}.",
+    step_cache_initialized: "Initialized an empty cache with capacity {size}.",
+    step_consider_request: "Processing request {index}: {value}.",
+    step_cache_hit: "Request {value} is already in the cache.",
+    step_cache_miss_load: "Miss on {value}; loaded it into a free cache slot.",
+    step_cache_miss_evict: "Miss on {value}; evicted {evicted} and loaded {value}.",
     step_finished: "Reached the final state.",
     log_line_label: "Highlighted line: {line}",
     log_line_label_none: "No line highlighted yet",
@@ -241,6 +319,18 @@ const TRANSLATIONS = {
     proof_exchange_argument_title: "Exchange argument proof",
     proof_exchange_argument_body:
       "An optimal idle-free schedule can be transformed into earliest-deadline order by repeatedly swapping adjacent inversions without increasing maximum lateness.",
+    proof_cache_exchange_title: "Exchange argument for Farthest-in-Future",
+    proof_cache_exchange_body:
+      "Belady’s rule is proved by transforming any optimal reduced schedule so that it agrees with Farthest-in-Future one eviction decision at a time.",
+    proof_cache_reduced:
+      "First reduce the schedule: only load an item when it is actually requested. Then misses and cache insertions coincide.",
+    proof_cache_transform:
+      "At the first disagreement, swap the other schedule’s victim with the farthest-in-future victim. The caches synchronize again before the discarded item is needed.",
+    proof_operating_benchmark_title: "Operating-conditions benchmark",
+    proof_operating_benchmark_body:
+      "The reference chapter motivates LRU through locality of reference: recent requests are usually needed again soon.",
+    proof_operating_benchmark_note:
+      "This tool therefore uses LRU as the benchmark policy in the operating-conditions scenario, while still showing MRU and random eviction for comparison.",
     proof_conclusion_title: "Conclusion",
     proof_sched_conclusion:
       "Greedy selected {greedy} intervals and the optimal benchmark also selects {optimal}; the schedule is optimal.",
@@ -252,6 +342,10 @@ const TRANSLATIONS = {
       "The current schedule has {inversions} deadline inversions and maximum lateness {lateness}. Earliest-deadline order eliminates inversions and is optimal.",
     proof_lateness_swap:
       "Swapping an adjacent inverted pair never increases maximum lateness, so repeated swaps transform an optimal schedule into earliest-deadline order.",
+    proof_cache_conclusion:
+      "Following the same exchange step through the whole sequence shows that Farthest-in-Future achieves the minimum possible miss count {misses}.",
+    proof_real_cache_conclusion:
+      "The current policy incurs {misses} misses on this instance; the operating-conditions benchmark incurs {best}.",
     proof_depth_sentence: "At time {time}, depth = {depth}. The intervals shown below must occupy different rooms.",
     proof_greedy_finish: "Greedy r-th interval",
     proof_optimal_finish: "Optimal r-th interval",
@@ -270,18 +364,24 @@ const TRANSLATIONS = {
     empty_csv: "the file is empty",
     invalid_csv_columns: "each row must have exactly three columns",
     invalid_csv_numbers: "numeric values are invalid for this problem",
+    invalid_csv_queue: "the queue column must contain at least one request symbol",
   },
   "pt-BR": {
     app_title: "Visualizador de Algoritmos de Escalonamento",
     app_subtitle:
-      "Explicações visuais interativas para escalonamento de intervalos, particionamento de intervalos e minimização do atraso máximo.",
+      "Explicações visuais interativas para escalonamento de intervalos, particionamento de intervalos, atraso máximo e caching.",
     eyebrow: "Algoritmos Gulosos",
     controls_kicker: "Configurações",
     controls_title: "Instância e execução",
+    settings_toggle_show: "Mostrar painel de configurações",
+    settings_toggle_hide: "Ocultar painel de configurações",
     problem_label: "Problema",
     algorithm_label: "Regra gulosa",
     preset_label: "Instância predefinida",
     random_size_label: "Tamanho aleatório",
+    cache_size_label: "Tamanho do cache",
+    cache_universe_label: "Elementos diferentes",
+    queue_size_label: "Tamanho da fila",
     random_action_label: "Gerar",
     random_btn: "Instância aleatória",
     csv_label: "Carregar instância CSV",
@@ -291,13 +391,15 @@ const TRANSLATIONS = {
     stop_btn: "Parar execução automática",
     complete_btn: "Executar até o final",
     speed_label: "Velocidade automática",
-    step_counter_label: "Contador de operacoes",
+    step_counter_label: "Contador de operações",
     view_code: "Código",
     view_interval: "Intervalos",
+    view_cache: "Cache",
     view_graph: "Grafo",
     view_proof: "Prova",
     view_title_code: "Visualização de código e estrutura de dados",
     view_title_interval: "Visualização do diagrama de intervalos",
+    view_title_cache: "Visualização do estado do cache",
     view_title_graph: "Visualização do grafo",
     view_title_proof: "Visualização da prova de corretude",
     view_kicker: "Visualização",
@@ -337,9 +439,15 @@ const TRANSLATIONS = {
     problem_interval_partitioning_subtitle: "Use o número mínimo de salas para todos os intervalos.",
     problem_minimize_lateness: "Escalonamento para Minimizar Atraso",
     problem_minimize_lateness_subtitle: "Ordene todas as tarefas para minimizar o atraso máximo.",
+    problem_optimal_caching: "Caching Ótimo",
+    problem_optimal_caching_subtitle: "Processe a sequência completa de requisições com o futuro visível e minimize faltas de cache.",
+    problem_real_caching: "Caching em Condições Reais de Operação",
+    problem_real_caching_subtitle: "Processe requisições online sem mostrar a fila futura.",
     objective_interval_scheduling: "Máximo número de intervalos compatíveis",
     objective_interval_partitioning: "Mínimo número de salas",
     objective_minimize_lateness: "Mínimo atraso máximo",
+    objective_optimal_caching: "Número mínimo de faltas de cache",
+    objective_real_caching: "Mínimo de faltas em condições reais",
     algo_earliest_start: "Inicia mais cedo",
     algo_shortest_interval: "Menor intervalo",
     algo_fewest_conflicts: "Menos conflitos",
@@ -347,6 +455,10 @@ const TRANSLATIONS = {
     algo_shortest_duration: "Menor duração",
     algo_smallest_slack: "Menor folga",
     algo_earliest_deadline: "Menor deadline",
+    algo_farthest_future: "Farthest-in-Future",
+    algo_lru: "Least-Recently-Used (LRU)",
+    algo_mru: "Most-Recently-Used",
+    algo_random_eviction: "Evicção aleatória",
     rule_earliest_start: "Ordena por tempo inicial crescente",
     rule_shortest_interval: "Ordena por comprimento crescente do intervalo",
     rule_fewest_conflicts: "Ordena por número crescente de conflitos",
@@ -354,6 +466,10 @@ const TRANSLATIONS = {
     rule_shortest_duration: "Ordena por tempo de processamento crescente",
     rule_smallest_slack: "Ordena por folga crescente d - t",
     rule_earliest_deadline: "Ordena por deadline crescente",
+    rule_farthest_future: "Em uma falta, remove o item necessário mais adiante no futuro",
+    rule_lru: "Em uma falta, remove o item em cache usado há mais tempo",
+    rule_mru: "Em uma falta, remove o item em cache usado mais recentemente",
+    rule_random_eviction: "Em uma falta, remove um item aleatório do cache",
     comparator_start: "tempo inicial",
     comparator_finish: "tempo final",
     comparator_length: "comprimento do intervalo",
@@ -361,12 +477,20 @@ const TRANSLATIONS = {
     comparator_duration: "tempo de processamento",
     comparator_slack: "folga",
     comparator_deadline: "deadline",
+    comparator_future_distance: "próximo uso mais distante",
+    comparator_least_recent: "acesso menos recente",
+    comparator_most_recent: "acesso mais recente",
+    comparator_random: "escolha aleatória",
     proof_none: "Sem prova de otimalidade: apenas heurística",
     proof_stays_ahead: "Estilo da prova: fica à frente",
     proof_structural_bound: "Estilo da prova: limite estrutural",
     proof_exchange_argument: "Estilo da prova: argumento da troca",
-    source_refs_intervalos_py: "Fonte: implementação de referência em Python",
-    source_refs_aulas_tex: "Fonte: slides da disciplina",
+    proof_cache_exchange: "Estilo da prova: troca em escalonamentos de cache",
+    proof_operating_benchmark: "Política de referência em condições reais",
+    source_python_reference: "Fonte: implementação de referência em Python",
+    source_lecture_slides: "Fonte: slides da disciplina",
+    source_algorithm_design: "Fonte: Algorithm Design, Capítulo 4",
+    source_classroom_reference: "Fonte: instância de referência da disciplina",
     source_curated: "Fonte: contraexemplo didático curado",
     source_generated: "Fonte: gerada no navegador",
     preset_sched_refs_a: "Exemplo de referência A",
@@ -389,6 +513,14 @@ const TRANSLATIONS = {
     preset_late_slide_1_desc: "Compara menor duração e menor folga contra menor deadline.",
     preset_late_slide_2: "Instância 2 dos slides",
     preset_late_slide_2_desc: "Segunda instância dos slides para comparar atrasos.",
+    preset_cache_book_short: "Exemplo de cache do livro 1",
+    preset_cache_book_short_desc: "A sequência curta de três itens do livro, começando com cache vazio.",
+    preset_cache_book_exchange: "Exemplo de cache do livro 2",
+    preset_cache_book_exchange_desc: "A sequência usada na discussão do argumento da troca do Farthest-in-Future.",
+    preset_real_cache_short: "Exemplo de operação real 1",
+    preset_real_cache_short_desc: "A sequência curta de cache, revelada uma requisição por vez.",
+    preset_real_cache_locality: "Exemplo de localidade em operação real",
+    preset_real_cache_locality_desc: "Uma sequência com forte localidade, em que o LRU deve ir bem.",
     preset_custom: "Instância personalizada atual",
     card_objective: "Objetivo",
     card_rule: "Regra",
@@ -430,6 +562,14 @@ const TRANSLATIONS = {
     code_late_6: "atualize L com atraso(j)",
     code_late_7: "t = fim(j)",
     code_late_8: "retorne o escalonamento",
+    code_cache_1: "cache = estrutura vazia com capacidade k",
+    code_cache_2: "para cada requisição d_i na sequência",
+    code_cache_3: "se d_i já está no cache",
+    code_cache_4: "registre um acerto",
+    code_cache_5: "senão registre uma falta",
+    code_cache_6: "se houver espaço livre, insira d_i",
+    code_cache_7: "senão aplique {rule} e insira d_i",
+    code_cache_8: "retorne o número de faltas",
     state_selected: "Intervalos selecionados",
     state_rejected: "Intervalos rejeitados",
     state_last_finish: "Último tempo final",
@@ -440,6 +580,9 @@ const TRANSLATIONS = {
     state_scheduled_jobs: "Tarefas escalonadas",
     state_time: "Tempo atual",
     state_max_lateness: "Atraso máximo",
+    state_cache_capacity: "Capacidade do cache",
+    state_hits: "Acertos",
+    state_misses: "Faltas",
     state_current_item: "Item atual",
     state_step_message: "Passo atual",
     state_none: "Nenhum",
@@ -450,6 +593,7 @@ const TRANSLATIONS = {
     empty_selected: "Nenhum intervalo selecionado ainda.",
     empty_rooms: "Nenhuma sala aberta ainda.",
     empty_schedule: "Nenhuma tarefa escalonada ainda.",
+    empty_cache: "O cache está vazio.",
     room_label: "Sala {room}",
     partition_preview_label: "Intervalos não atribuídos",
     partition_rooms_label: "Salas abertas",
@@ -473,6 +617,12 @@ const TRANSLATIONS = {
     header_slack: "Folga",
     header_completion: "Intervalo escalonado",
     header_lateness: "Atraso",
+    header_request_index: "Req. #",
+    header_request: "Requisição",
+    header_outcome: "Resultado",
+    header_evicted: "Removido",
+    header_cache_after: "Cache após",
+    header_cache_before: "Cache antes",
     header_start_short: "s",
     header_finish_short: "f",
     header_length_short: "tam",
@@ -481,6 +631,24 @@ const TRANSLATIONS = {
     header_deadline_short: "d",
     header_slack_short: "folga",
     header_lateness_short: "atr",
+    request_label_short: "Req. {index}",
+    cache_current_request: "Requisição atual",
+    cache_current_contents: "Cache atual",
+    cache_request_stream: "Fluxo de referências",
+    cache_future_queue: "Fila futura",
+    cache_incoming_request: "Nova requisição",
+    cache_contents_label: "Conteúdo do cache",
+    cache_misses_label: "Faltas: {value}",
+    cache_hits_label: "Acertos: {value}",
+    cache_hit_banner: "Acerto. Acertos: {hits}; faltas: {misses}.",
+    cache_miss_banner: "Falta. Acertos: {hits}; faltas: {misses}.",
+    cache_legend_hit: "Acerto / já estava no cache",
+    cache_legend_miss: "Falta / carregado agora",
+    cache_evicted_sentence: "Item removido: {value}.",
+    cache_no_eviction: "Nenhuma remoção foi necessária neste passo.",
+    cache_outcome_hit: "Acerto",
+    cache_outcome_miss_load: "Falta, carregado em espaço livre",
+    cache_outcome_miss_evict: "Falta, com remoção de outro item",
     step_sorted: "Estrutura de entrada ordenada ({count} itens).",
     step_ready: "Pronto para começar. A ordem original da entrada está sendo mostrada.",
     step_initialized: "Estado guloso inicializado.",
@@ -492,6 +660,11 @@ const TRANSLATIONS = {
     step_open_room: "Sala {roomId} aberta para o intervalo {id}.",
     step_consider_job: "Considerando a tarefa {id}.",
     step_schedule_job: "Tarefa {id} escalonada em [{start}, {finish}] com atraso {lateness}.",
+    step_cache_initialized: "Inicializou um cache vazio com capacidade {size}.",
+    step_consider_request: "Processando a requisição {index}: {value}.",
+    step_cache_hit: "A requisição {value} já está no cache.",
+    step_cache_miss_load: "Falta em {value}; carregou em uma posição livre do cache.",
+    step_cache_miss_evict: "Falta em {value}; removeu {evicted} e carregou {value}.",
     step_finished: "Estado final alcançado.",
     log_line_label: "Linha destacada: {line}",
     log_line_label_none: "Nenhuma linha destacada ainda",
@@ -513,6 +686,18 @@ const TRANSLATIONS = {
     proof_exchange_argument_title: "Prova por argumento da troca",
     proof_exchange_argument_body:
       "Um escalonamento ótimo sem ociosidade pode ser transformado na ordem de deadlines crescentes trocando inversões adjacentes sem aumentar o atraso máximo.",
+    proof_cache_exchange_title: "Argumento da troca para Farthest-in-Future",
+    proof_cache_exchange_body:
+      "A regra de Belady é provada transformando qualquer escalonamento ótimo reduzido para concordar com o Farthest-in-Future, uma decisão de remoção por vez.",
+    proof_cache_reduced:
+      "Primeiro reduzimos o escalonamento: só carregamos um item quando ele é realmente requisitado. Assim, faltas e carregamentos coincidem.",
+    proof_cache_transform:
+      "Na primeira divergência, trocamos a vítima do outro escalonamento pela vítima mais distante no futuro. Os caches voltam a coincidir antes de o item descartado ser necessário.",
+    proof_operating_benchmark_title: "Referência em condições reais",
+    proof_operating_benchmark_body:
+      "O capítulo de referência motiva LRU pela localidade de referência: itens usados recentemente tendem a ser requisitados de novo em breve.",
+    proof_operating_benchmark_note:
+      "Por isso, esta ferramenta usa o LRU como política de referência no cenário de condições reais, mostrando MRU e remoção aleatória para comparação.",
     proof_conclusion_title: "Conclusão",
     proof_sched_conclusion:
       "A estratégia gulosa selecionou {greedy} intervalos e o benchmark ótimo também seleciona {optimal}; o escalonamento é ótimo.",
@@ -524,6 +709,10 @@ const TRANSLATIONS = {
       "O escalonamento atual tem {inversions} inversões de deadline e atraso máximo {lateness}. A ordem por deadline elimina inversões e é ótima.",
     proof_lateness_swap:
       "Trocar uma inversão adjacente nunca aumenta o atraso máximo, então repetições dessa troca transformam uma solução ótima na ordem por deadlines.",
+    proof_cache_conclusion:
+      "Aplicando o mesmo passo de troca ao longo de toda a sequência, mostramos que Farthest-in-Future atinge o número mínimo possível de faltas {misses}.",
+    proof_real_cache_conclusion:
+      "A política atual produz {misses} faltas nesta instância; a política de referência em condições reais produz {best}.",
     proof_depth_sentence: "No tempo {time}, a profundidade é {depth}. Os intervalos abaixo precisam de salas diferentes.",
     proof_greedy_finish: "r-ésimo intervalo guloso",
     proof_optimal_finish: "r-ésimo intervalo ótimo",
@@ -542,6 +731,7 @@ const TRANSLATIONS = {
     empty_csv: "o arquivo está vazio",
     invalid_csv_columns: "cada linha precisa ter exatamente três colunas",
     invalid_csv_numbers: "os valores numéricos são inválidos para este problema",
+    invalid_csv_queue: "a coluna queue precisa conter ao menos um símbolo de requisição",
   },
 };
 
@@ -562,40 +752,42 @@ export function createTranslator(language) {
 export function getHelpHtml(language, t) {
   if (language === "pt-BR") {
     return `
-      <p>Escolha um dos três problemas, depois selecione uma regra gulosa e uma instância. A ordenação já aparece refletida na visualização de código e estrutura de dados.</p>
+      <p>Escolha um dos cinco problemas, depois selecione uma regra gulosa e uma instância. Nos problemas de escalonamento, a ordenação aparece refletida na visualização de código e estrutura de dados; nos problemas de cache, a sequência é processada requisição por requisição.</p>
       <ul>
         <li><strong>Executar passo</strong>: avança um passo e destaca a linha correspondente do pseudocódigo.</li>
         <li><strong>Execução automática</strong>: reproduz o algoritmo continuamente na velocidade escolhida.</li>
         <li><strong>Executar até o final</strong>: salta direto para o estado final e para a solução produzida.</li>
-        <li><strong>CSV</strong>: para intervalos use <code>id,start,finish</code>; para atraso use <code>job,length,deadline</code>. O cabeçalho é opcional.</li>
+        <li><strong>CSV</strong>: para intervalos use <code>id,start,finish</code>; para atraso use <code>job,length,deadline</code>; para cache use <code>n_elements,cache_size,queue</code>. O cabeçalho é opcional.</li>
+        <li><strong>Painel lateral</strong>: use o botão no topo para recolher ou restaurar completamente as configurações.</li>
       </ul>
       <p>As quatro abas foram pensadas para objetivos diferentes:</p>
       <ul>
         <li><strong>Código</strong>: pseudocódigo, item focal e evolução da estrutura de dados.</li>
-        <li><strong>Intervalos</strong>: diagrama temporal das escolhas, rejeições, salas ou atrasos.</li>
-        <li><strong>Grafo</strong>: grafo de conflitos para problemas com intervalos e grafo de inversões para atraso máximo.</li>
-        <li><strong>Prova</strong>: visualização das três provas corretas do material de referência.</li>
+        <li><strong>Intervalos / Cache</strong>: diagrama temporal para escalonamento e visualização do cache/fila de requisições para os problemas de caching.</li>
+        <li><strong>Grafo</strong>: aparece apenas nos problemas de escalonamento.</li>
+        <li><strong>Prova</strong>: visualização dos argumentos corretos do material de referência, incluindo o argumento da troca para Farthest-in-Future.</li>
       </ul>
-      <p>${t("proof_stays_ahead")}, ${t("proof_structural_bound")} e ${t("proof_exchange_argument")} aparecem apenas nas regras ótimas; heurísticas mostram a comparação com o benchmark ótimo.</p>
+      <p>${t("proof_stays_ahead")}, ${t("proof_structural_bound")}, ${t("proof_exchange_argument")} e ${t("proof_cache_exchange")} aparecem apenas nas regras ótimas ou de referência; heurísticas mostram a comparação com o benchmark correspondente.</p>
     `;
   }
 
   return `
-    <p>Choose one of the three problems, then select a greedy rule and an instance. The sorting step is already reflected in the code and data-structure view.</p>
+    <p>Choose one of the five problems, then select a greedy rule and an instance. For scheduling problems, the sorting step is already reflected in the code and data-structure view; for caching problems, the request sequence is processed one access at a time.</p>
     <ul>
       <li><strong>Run step</strong>: advances one step and highlights the corresponding pseudocode line.</li>
       <li><strong>Auto run</strong>: replays the algorithm continuously at the selected speed.</li>
       <li><strong>Run to completion</strong>: jumps directly to the final state and final solution.</li>
-      <li><strong>CSV</strong>: for interval problems use <code>id,start,finish</code>; for lateness use <code>job,length,deadline</code>. The header row is optional.</li>
+      <li><strong>CSV</strong>: for interval problems use <code>id,start,finish</code>; for lateness use <code>job,length,deadline</code>; for caching use <code>n_elements,cache_size,queue</code>. The header row is optional.</li>
+      <li><strong>Settings rail</strong>: use the top toggle button to collapse or restore the lateral settings panel.</li>
     </ul>
     <p>The four tabs serve different teaching goals:</p>
     <ul>
       <li><strong>Code</strong>: pseudocode, focal item, and the evolving data structure.</li>
-      <li><strong>Intervals</strong>: timeline diagram of choices, rejections, rooms, or lateness.</li>
-      <li><strong>Graph</strong>: conflict graph for interval problems and inversion graph for maximum lateness.</li>
-      <li><strong>Proof</strong>: visualization of the three correctness arguments used in the references.</li>
+      <li><strong>Intervals / Cache</strong>: timeline diagrams for scheduling and cache-state visualizations for the caching problems.</li>
+      <li><strong>Graph</strong>: shown only for the scheduling problems.</li>
+      <li><strong>Proof</strong>: visualization of the correctness arguments used in the references, including Belady’s exchange argument.</li>
     </ul>
-    <p>${t("proof_stays_ahead")}, ${t("proof_structural_bound")}, and ${t("proof_exchange_argument")} are shown only for the optimal rules; heuristics show comparison against the optimal benchmark.</p>
+    <p>${t("proof_stays_ahead")}, ${t("proof_structural_bound")}, ${t("proof_exchange_argument")}, and ${t("proof_cache_exchange")} are shown only for the optimal or benchmark rules; heuristics show comparison against the corresponding benchmark.</p>
   `;
 }
 
@@ -605,16 +797,15 @@ export function getReferencesHtml(language) {
       <p><strong>Principais referências</strong></p>
       <ol>
         <li><em>Algorithm Design</em>, Jon Kleinberg e Éva Tardos, Capítulo 4.</li>
-        <li>Slides de Projeto e Análise de Algoritmos I.</li>
-        <li>Implementações de referência em Python para os algoritmos de intervalos.</li>
-        <li>Demonstração da estratégia que termina mais cedo.</li>
-        <li>Demonstração da estratégia que inicia mais cedo.</li>
+        <li>Material de aula de Projeto e Análise de Algoritmos I sobre algoritmos gulosos.</li>
+        <li>Discussões clássicas sobre caching, incluindo a regra de Belady e a motivação prática para LRU.</li>
       </ol>
       <p><strong>Observações</strong></p>
       <ul>
         <li>A prova ótima para escalonamento de intervalos usa o argumento “fica à frente”.</li>
         <li>A prova ótima para particionamento usa a profundidade como limite estrutural.</li>
         <li>A prova ótima para minimizar atraso usa argumento da troca sobre inversões adjacentes.</li>
+        <li>A prova ótima para caching usa o argumento da troca do Farthest-in-Future.</li>
       </ul>
       <p><strong>Veja mais algoritmos</strong></p>
       <p><a href="https://github.com/BrunoGrisci/projeto-e-analise-de-algoritmos" target="_blank" rel="noopener noreferrer">https://github.com/BrunoGrisci/projeto-e-analise-de-algoritmos</a></p>
@@ -625,16 +816,15 @@ export function getReferencesHtml(language) {
     <p><strong>Main references</strong></p>
     <ol>
       <li><em>Algorithm Design</em>, Jon Kleinberg and Éva Tardos, Chapter 4.</li>
-      <li>Lecture slides for Projeto e Análise de Algoritmos I.</li>
-      <li>Python reference implementations of the interval algorithms.</li>
-      <li>Demo of the earliest-finish-time-first strategy.</li>
-      <li>Demo of the earliest-start-time-first strategy.</li>
+      <li>Course material for Projeto e Análise de Algoritmos I on greedy algorithms.</li>
+      <li>Classic caching discussions covering Belady’s rule and the practical motivation for LRU.</li>
     </ol>
     <p><strong>Notes</strong></p>
     <ul>
       <li>The optimal proof for interval scheduling uses the stays-ahead argument.</li>
       <li>The optimal proof for interval partitioning uses depth as a structural lower bound.</li>
       <li>The optimal proof for minimizing lateness uses an exchange argument on adjacent inversions.</li>
+      <li>The optimal proof for caching uses the exchange argument behind Farthest-in-Future.</li>
     </ul>
     <p><strong>See more algorithms</strong></p>
     <p><a href="https://github.com/BrunoGrisci/projeto-e-analise-de-algoritmos" target="_blank" rel="noopener noreferrer">https://github.com/BrunoGrisci/projeto-e-analise-de-algoritmos</a></p>

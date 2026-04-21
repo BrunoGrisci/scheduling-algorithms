@@ -95,6 +95,18 @@ function getRoomAssignmentMap(rooms) {
 }
 
 function buildPseudocode(problemId, algorithm, t) {
+  if (problemId === "optimalCaching" || problemId === "realCaching") {
+    return [
+      { text: t("code_cache_1", { size: algorithm.cacheSize ?? "k" }), indent: 0 },
+      { text: t("code_cache_2"), indent: 0 },
+      { text: t("code_cache_3"), indent: 1 },
+      { text: t("code_cache_4"), indent: 2 },
+      { text: t("code_cache_5"), indent: 2 },
+      { text: t("code_cache_6"), indent: 3 },
+      { text: t("code_cache_7", { rule: t(algorithm.ruleKey) }), indent: 2 },
+      { text: t("code_cache_8"), indent: 0 },
+    ];
+  }
   if (problemId === "intervalScheduling") {
     return [
       { text: t("code_sched_1", { rule: t(algorithm.comparatorKey) }), indent: 0 },
@@ -127,6 +139,145 @@ function buildPseudocode(problemId, algorithm, t) {
     { text: t("code_late_7"), indent: 1 },
     { text: t("code_late_8"), indent: 0 },
   ];
+}
+
+function getCacheRequestStatus(index, stepState) {
+  if (!stepState) {
+    return "pending";
+  }
+  if (stepState.currentIndex === index) {
+    return "current";
+  }
+  if (index < (stepState.processedCount ?? 0)) {
+    const outcome = stepState.requestOutcomes?.[index]?.outcome;
+    if (outcome === "hit") {
+      return "scheduled";
+    }
+    if (outcome?.startsWith("miss")) {
+      return "rejected";
+    }
+    return "processed";
+  }
+  return "pending";
+}
+
+function getCacheOutcomeLabelKey(outcome) {
+  if (!outcome) {
+    return "status_pending";
+  }
+  return `cache_outcome_${String(outcome).replaceAll("-", "_")}`;
+}
+
+function getActiveCacheStepOutcome(stepState) {
+  if (!stepState || stepState.currentIndex == null) {
+    return null;
+  }
+  return stepState.requestOutcomes?.[stepState.currentIndex]?.outcome ?? null;
+}
+
+function getActiveCacheSlot(stepState) {
+  const activeOutcome = getActiveCacheStepOutcome(stepState);
+  if (!activeOutcome || !stepState?.currentRequest) {
+    return { index: -1, outcome: null };
+  }
+
+  const cache = stepState.cache ?? [];
+  const targetValue = activeOutcome === "hit" ? stepState.currentRequest : (stepState.lastLoaded ?? stepState.currentRequest);
+  const index = cache.indexOf(targetValue);
+  return {
+    index,
+    outcome: activeOutcome === "hit" ? "hit" : "miss",
+  };
+}
+
+function renderCacheDataChips(simulation, step, t) {
+  return `
+    <div class="chip-grid">
+      <div class="data-chip"><span>${t("state_cache_capacity")}</span><strong>${simulation.instance.cacheSize}</strong></div>
+      <div class="data-chip"><span>${t("state_hits")}</span><strong>${step.state.hits ?? 0}</strong></div>
+      <div class="data-chip"><span>${t("state_misses")}</span><strong>${step.state.misses ?? 0}</strong></div>
+    </div>
+  `;
+}
+
+function renderCacheRequestList(simulation, step, t) {
+  return `
+    <div class="item-card-grid">
+      ${simulation.items
+        .map((item, index) => {
+          const status = getCacheRequestStatus(index, step.state);
+          const outcome = step.state.requestOutcomes?.[index];
+          return `
+            <article class="item-card status-${status}">
+              <div class="item-card-head">
+                <strong>${t("request_label_short", { index: index + 1 })}</strong>
+                <span>${escapeHtml(item.value)}</span>
+              </div>
+              <p>${t("header_request_index")}: ${index + 1}</p>
+              <p>${t("header_outcome")}: ${t(getCacheOutcomeLabelKey(outcome?.outcome))}</p>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderCacheCodeView(problemId, algorithm, simulation, step, t) {
+  const lines = buildPseudocode(problemId, algorithm, t);
+  const currentRequest = step.state.currentRequest ? escapeHtml(step.state.currentRequest) : t("state_none");
+  const cacheNow = step.state.cache?.length
+    ? step.state.cache.map((value) => `<span class="pill room">${escapeHtml(value)}</span>`).join("")
+    : `<span class="muted">${t("empty_cache")}</span>`;
+
+  return `
+    <div class="code-layout split-layout" id="codeSplit">
+      <section class="subpanel" data-pane="primary">
+        <h3>${t("view_code")}</h3>
+        <ol class="code-list">
+          ${lines
+            .map(
+              (line, index) => `
+                <li class="${step.line === index + 1 ? "active" : ""}" style="--code-indent:${line.indent}">
+                  <span class="line-no">${index + 1}</span>
+                  <code class="code-content">${escapeHtml(line.text)}</code>
+                </li>
+              `,
+            )
+            .join("")}
+        </ol>
+      </section>
+      <div
+        class="resize-handle resize-handle-x"
+        data-resize-target="codeSplit"
+        data-resize-axis="x"
+        data-resize-var="--code-left"
+        data-resize-pane="[data-pane='primary']"
+        data-min="280"
+        data-max="920"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize code and data panels"
+      ></div>
+      <section class="subpanel">
+        <h3>${t("data_structure_title")}</h3>
+        ${renderCacheDataChips(simulation, step, t)}
+        <div class="subpanel">
+          <h3>${t("cache_current_request")}</h3>
+          <div class="pill-row"><span class="pill warning">${currentRequest}</span></div>
+          <p class="muted">${step.state.lastEvicted ? t("cache_evicted_sentence", { value: step.state.lastEvicted }) : t("cache_no_eviction")}</p>
+        </div>
+        <div class="subpanel">
+          <h3>${t("cache_current_contents")}</h3>
+          <div class="pill-row">${cacheNow}</div>
+        </div>
+        <div class="subpanel">
+          <h3>${t("cache_request_stream")}</h3>
+          ${renderCacheRequestList(simulation, step, t)}
+        </div>
+      </section>
+    </div>
+  `;
 }
 
 function buildTimelineBounds(problemId, simulation, stepState) {
@@ -317,6 +468,9 @@ function renderResultStructure(problemId, simulation, stepState, t) {
 }
 
 function renderCodeView(problemId, algorithm, simulation, step, t) {
+  if (problemId === "optimalCaching" || problemId === "realCaching") {
+    return renderCacheCodeView(problemId, algorithm, simulation, step, t);
+  }
   const lines = buildPseudocode(problemId, algorithm, t);
   const displayItems = getDisplayItems(simulation, step.state);
   return `
@@ -545,7 +699,149 @@ function renderLatenessSvg(simulation, step, t, boardState) {
   );
 }
 
+function renderCacheSvg(problemId, simulation, step, t, boardState) {
+  const showFutureQueue = problemId === "optimalCaching";
+  const cacheSize = simulation.instance.cacheSize;
+  const requests = simulation.instance.requests;
+  const currentRequest = step.state.currentRequest ?? "—";
+  const cache = step.state.cache ?? [];
+  const hits = step.state.hits ?? 0;
+  const misses = step.state.misses ?? 0;
+  const activeOutcome = getActiveCacheStepOutcome(step.state);
+  const activeSlot = getActiveCacheSlot(step.state);
+  const queueBoxSize = 62;
+  const queueGap = 18;
+  const slotWidth = 156;
+  const slotHeight = 86;
+  const slotGap = 24;
+  const metricWidth = 196;
+  const metricHeight = 78;
+  const metricGap = 30;
+  const incomingWidth = 154;
+  const incomingHeight = 92;
+  const queueRowWidth = requests.length > 0 ? requests.length * queueBoxSize + (requests.length - 1) * queueGap : queueBoxSize;
+  const cacheRowWidth = cacheSize * slotWidth + Math.max(0, cacheSize - 1) * slotGap;
+  const metricsWidth = metricWidth * 2 + metricGap;
+  const dominantWidth = Math.max(queueRowWidth, cacheRowWidth, metricsWidth, incomingWidth, 520);
+  const width = Math.max(showFutureQueue ? 1180 : 980, dominantWidth + 360);
+  const height = showFutureQueue ? 520 : 450;
+  const centerX = width / 2;
+  const queueStart = centerX - queueRowWidth / 2;
+  const cacheStart = centerX - cacheRowWidth / 2;
+  const metricsStart = centerX - metricsWidth / 2;
+
+  const queueBoxes = showFutureQueue
+    ? requests
+        .map((value, index) => {
+          const x = queueStart + index * (queueBoxSize + queueGap);
+          const status = getCacheRequestStatus(index, step.state);
+          const isActiveResolved = step.state.currentIndex === index && Boolean(activeOutcome);
+          const classes = isActiveResolved
+            ? `status-${activeOutcome === "hit" ? "scheduled" : "rejected"} cache-request-active cache-request-${activeOutcome === "hit" ? "hit" : "miss"}`
+            : status === "current"
+              ? "status-current"
+              : status === "scheduled"
+                ? "status-scheduled"
+                : status === "rejected"
+                  ? "status-rejected"
+                  : "partition-preview";
+          return `
+            <g>
+              <rect x="${x}" y="114" width="${queueBoxSize}" height="${queueBoxSize}" rx="16" class="interval-bar ${classes}"></rect>
+              <text x="${x + queueBoxSize / 2}" y="151" text-anchor="middle" class="bar-label">${escapeHtml(value)}</text>
+            </g>
+          `;
+        })
+        .join("")
+    : `
+      <g>
+        <text x="${centerX}" y="116" class="cache-section-label" text-anchor="middle">${t("cache_incoming_request")}</text>
+        <rect
+          x="${centerX - incomingWidth / 2}"
+          y="144"
+          width="${incomingWidth}"
+          height="${incomingHeight}"
+          rx="24"
+          class="interval-bar ${
+            activeOutcome
+              ? `status-${activeOutcome === "hit" ? "scheduled" : "rejected"} cache-request-active cache-request-${activeOutcome === "hit" ? "hit" : "miss"}`
+              : "status-current"
+          }"
+        ></rect>
+        <text x="${centerX}" y="201" text-anchor="middle" class="bar-label">${escapeHtml(currentRequest)}</text>
+      </g>
+    `;
+
+  const cacheSlots = Array.from({ length: cacheSize }, (_, index) => {
+    const value = cache[index] ?? "";
+    const x = cacheStart + index * (slotWidth + slotGap);
+    const isActive = index === activeSlot.index && Boolean(activeSlot.outcome);
+    return `
+      <g>
+        <rect
+          x="${x}"
+          y="${showFutureQueue ? 286 : 262}"
+          width="${slotWidth}"
+          height="${slotHeight}"
+          rx="22"
+          class="cache-slot${isActive ? ` cache-slot-active cache-slot-${activeSlot.outcome}` : ""}"
+        ></rect>
+        ${value ? `<text x="${x + slotWidth / 2}" y="${showFutureQueue ? 338 : 314}" text-anchor="middle" class="bar-label">${escapeHtml(value)}</text>` : `<text x="${x + slotWidth / 2}" y="${showFutureQueue ? 338 : 314}" text-anchor="middle" class="axis-label">—</text>`}
+      </g>
+    `;
+  }).join("");
+
+  const metricChips = [
+    { x: metricsStart, label: t("state_misses"), value: misses },
+    { x: metricsStart + metricWidth + metricGap, label: t("state_hits"), value: hits },
+  ]
+    .map(
+      ({ x, label, value }) => `
+        <g>
+          <rect x="${x}" y="${showFutureQueue ? 412 : 386}" width="${metricWidth}" height="${metricHeight}" rx="24" class="cache-metric-chip"></rect>
+          <text x="${x + metricWidth / 2}" y="${showFutureQueue ? 440 : 414}" text-anchor="middle" class="cache-metric-label">${escapeHtml(label)}</text>
+          <text x="${x + metricWidth / 2}" y="${showFutureQueue ? 474 : 448}" text-anchor="middle" class="cache-metric-value">${value}</text>
+        </g>
+      `,
+    )
+    .join("");
+
+  const note =
+    (step.state.processedCount ?? 0) === 0
+      ? t("step_ready")
+      : step.state.lastOutcome === "hit"
+        ? t("cache_hit_banner", { hits, misses })
+        : t("cache_miss_banner", { hits, misses });
+
+  return renderBoardFigure(
+    "interval",
+    `
+      <div class="legend-row">
+        <span class="legend-item"><i class="swatch status-scheduled"></i>${t("cache_legend_hit")}</span>
+        <span class="legend-item"><i class="swatch status-rejected"></i>${t("cache_legend_miss")}</span>
+        <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
+      </div>
+    `,
+    `
+      <svg viewBox="0 0 ${width} ${height}" class="timeline-svg cache-svg" data-board-svg aria-label="${t("view_cache")}">
+        ${showFutureQueue ? `<text x="${centerX}" y="74" class="cache-section-label" text-anchor="middle">${t("cache_future_queue")}</text>` : ""}
+        ${queueBoxes}
+        <text x="${centerX}" y="${showFutureQueue ? 248 : 234}" class="cache-section-label" text-anchor="middle">${t("cache_contents_label")}</text>
+        ${cacheSlots}
+        ${metricChips}
+      </svg>
+    `,
+    boardState,
+    t,
+    "",
+    note,
+  );
+}
+
 function renderIntervalView(problemId, simulation, step, t, boardState) {
+  if (problemId === "optimalCaching" || problemId === "realCaching") {
+    return renderCacheSvg(problemId, simulation, step, t, boardState);
+  }
   if (problemId === "intervalScheduling") {
     return renderIntervalSchedulingSvg(simulation, step, t, boardState);
   }
@@ -712,6 +1008,67 @@ function renderProofView(problemId, algorithm, simulation, step, t) {
     `;
   }
 
+  if (problemId === "optimalCaching") {
+    return `
+      <div class="proof-grid">
+        <article class="proof-card">
+          <h3>${t("proof_cache_exchange_title")}</h3>
+          <p>${t("proof_cache_exchange_body")}</p>
+          <p>${t("proof_cache_reduced")}</p>
+          <p>${t("proof_cache_transform")}</p>
+        </article>
+        <article class="proof-card">
+          <h3>${t("proof_conclusion_title")}</h3>
+          <p>${t("proof_cache_conclusion", { misses: simulation.result.objectiveValue })}</p>
+          <div class="proof-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>${t("header_request_index")}</th>
+                  <th>${t("header_request")}</th>
+                  <th>${t("header_cache_before")}</th>
+                  <th>${t("header_evicted")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  simulation.proof.evictionEvents
+                    .map(
+                      (event) => `
+                        <tr>
+                          <td>${event.requestIndex}</td>
+                          <td>${escapeHtml(event.requestValue)}</td>
+                          <td>${event.cacheBefore.map((value) => escapeHtml(value)).join(", ")}</td>
+                          <td>${escapeHtml(event.victim)}</td>
+                        </tr>
+                      `,
+                    )
+                    .join("") || `<tr><td colspan="4">${t("proof_no_rows")}</td></tr>`
+                }
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    `;
+  }
+
+  if (problemId === "realCaching") {
+    return `
+      <div class="proof-grid">
+        <article class="proof-card">
+          <h3>${t("proof_operating_benchmark_title")}</h3>
+          <p>${t("proof_operating_benchmark_body")}</p>
+          <p>${t("proof_operating_benchmark_note")}</p>
+        </article>
+        <article class="proof-card">
+          <h3>${t("proof_conclusion_title")}</h3>
+          <p>${t("proof_real_cache_conclusion", { misses: simulation.result.objectiveValue, best: simulation.optimal.objectiveValue })}</p>
+        </article>
+      </div>
+    `;
+  }
+
   if (problemId === "intervalScheduling") {
     return `
       <div class="proof-grid">
@@ -826,7 +1183,10 @@ export function renderSummaryCards(problem, algorithm, preset, simulation, t) {
 }
 
 export function renderStateSummary(problemId, simulation, step, t) {
-  const current = step.state.currentId ? escapeHtml(step.state.currentId) : t("state_none");
+  const current =
+    problemId === "optimalCaching" || problemId === "realCaching"
+      ? (step.state.currentRequest ? escapeHtml(step.state.currentRequest) : t("state_none"))
+      : (step.state.currentId ? escapeHtml(step.state.currentId) : t("state_none"));
   let items = `
     <div class="state-row"><span>${t("state_current_item")}</span><strong>${current}</strong></div>
     <div class="state-row"><span>${t("state_step_message")}</span><strong>${t(step.messageKey, step.params)}</strong></div>
@@ -848,11 +1208,17 @@ export function renderStateSummary(problemId, simulation, step, t) {
       <div class="state-row"><span>${t("state_assigned")}</span><strong>${step.state.assignedIds?.length ?? 0}</strong></div>
       <div class="state-row"><span>${t("state_depth_bound")}</span><strong>${simulation.optimal.objectiveValue}</strong></div>
     `;
-  } else {
+  } else if (problemId === "minimizeLateness") {
     items += `
       <div class="state-row"><span>${t("state_time")}</span><strong>${formatValue(step.state.time)}</strong></div>
       <div class="state-row"><span>${t("state_scheduled_jobs")}</span><strong>${step.state.scheduled?.length ?? 0}</strong></div>
       <div class="state-row"><span>${t("state_max_lateness")}</span><strong>${formatValue(step.state.maxLateness)}</strong></div>
+    `;
+  } else {
+    items += `
+      <div class="state-row"><span>${t("state_cache_capacity")}</span><strong>${simulation.instance.cacheSize}</strong></div>
+      <div class="state-row"><span>${t("state_hits")}</span><strong>${step.state.hits ?? 0}</strong></div>
+      <div class="state-row"><span>${t("state_misses")}</span><strong>${step.state.misses ?? 0}</strong></div>
     `;
   }
 
@@ -860,6 +1226,38 @@ export function renderStateSummary(problemId, simulation, step, t) {
 }
 
 export function renderInstanceTable(problemId, simulation, step, t) {
+  if (problemId === "optimalCaching" || problemId === "realCaching") {
+    return `
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>${t("header_request_index")}</th>
+            <th>${t("header_request")}</th>
+            <th>${t("header_outcome")}</th>
+            <th>${t("header_evicted")}</th>
+            <th>${t("header_cache_after")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${simulation.items
+            .map((item, index) => {
+              const outcome = step.state.requestOutcomes?.[index];
+              const status = getCacheRequestStatus(index, step.state);
+              return `
+                <tr class="status-${status}">
+                  <td>${index + 1}</td>
+                  <td>${escapeHtml(item.value)}</td>
+                  <td>${outcome ? t(getCacheOutcomeLabelKey(outcome.outcome)) : "—"}</td>
+                  <td>${outcome?.evicted ? escapeHtml(outcome.evicted) : "—"}</td>
+                  <td>${outcome ? outcome.cacheAfter.map((value) => escapeHtml(value)).join(", ") : "—"}</td>
+                </tr>
+              `;
+            })
+            .join("")}
+        </tbody>
+      </table>
+    `;
+  }
   const roomAssignments = getRoomAssignmentMap(step.state.rooms);
   const displayItems = getDisplayItems(simulation, step.state);
   if (problemId === "minimizeLateness") {
@@ -965,6 +1363,9 @@ export function renderView(viewMode, problemId, algorithm, simulation, step, t, 
     return renderIntervalView(problemId, simulation, step, t, boardState);
   }
   if (viewMode === "graph") {
+    if (problemId === "optimalCaching" || problemId === "realCaching") {
+      return renderIntervalView(problemId, simulation, step, t, boardState);
+    }
     return renderConflictGraph(problemId, simulation, step, t, boardState);
   }
   return renderProofView(problemId, algorithm, simulation, step, t);

@@ -44,60 +44,81 @@
 
     <main class="layout split-layout" id="mainLayout">
       <aside class="panel control-panel settings-rail" data-pane="primary" aria-labelledby="controlsTitle">
-        <div class="panel-header control-head">
-          <div>
-            <p class="panel-kicker" id="controlsKicker">Control panel</p>
-            <h2 id="controlsTitle">Instance and playback controls</h2>
-          </div>
-          <div class="status-cluster">
-            <div id="liveBadge" class="live-badge">Ready</div>
-            <div class="counter-card">
-              <span id="stepCounterLabel">Operation count</span>
-              <strong id="stepCounterValue">0 / 0</strong>
-            </div>
-          </div>
+        <div class="settings-toggle-wrap">
+          <button id="settingsToggleBtn" class="settings-toggle-btn secondary" type="button" aria-pressed="false" aria-controls="settingsShell">«</button>
         </div>
 
-        <div class="settings-stack">
-          <section class="settings-group">
-            <label class="field">
-              <span id="presetLabel">Preset instance</span>
-              <select id="presetSelect"></select>
-            </label>
-
-            <div class="field-row">
-              <label class="field">
-                <span id="randomSizeLabel">Random size</span>
-                <input id="randomSizeInput" type="number" min="3" max="18" value="8">
-              </label>
-
-              <div class="field action-field">
-                <span id="randomActionLabel">Generate</span>
-                <button id="generateRandomBtn" class="secondary" type="button">Random instance</button>
+        <div id="settingsShell" class="settings-shell">
+          <div class="panel-header control-head">
+            <div>
+              <p class="panel-kicker" id="controlsKicker">Control panel</p>
+              <h2 id="controlsTitle">Instance and playback controls</h2>
+            </div>
+            <div class="status-cluster">
+              <div id="liveBadge" class="live-badge">Ready</div>
+              <div class="counter-card">
+                <span id="stepCounterLabel">Operation count</span>
+                <strong id="stepCounterValue">0 / 0</strong>
               </div>
             </div>
+          </div>
 
-            <label class="field">
-              <span id="csvLabel">Load CSV instance</span>
-              <input id="csvInput" type="file" accept=".csv,text/csv">
-            </label>
-          </section>
+          <div class="settings-stack">
+            <section class="settings-group">
+              <label class="field">
+                <span id="presetLabel">Preset instance</span>
+                <select id="presetSelect"></select>
+              </label>
 
-          <section class="settings-group">
-            <div class="toolbar">
-              <button id="stepBtn" type="button">Run step</button>
-              <button id="autoBtn" type="button">Auto run</button>
-              <button id="completeBtn" class="accent" type="button">Run to completion</button>
-              <button id="resetBtn" class="secondary" type="button">Reset</button>
-            </div>
+              <div class="field-row" id="scheduleRandomRow">
+                <label class="field" id="randomSizeField">
+                  <span id="randomSizeLabel">Random size</span>
+                  <input id="randomSizeInput" type="number" min="3" max="18" value="8">
+                </label>
 
-            <label class="field compact-field">
-              <span id="speedLabel">Auto speed</span>
-              <select id="speedSelect"></select>
-            </label>
-          </section>
+                <div class="field action-field random-action-field">
+                  <span id="randomActionLabel">Generate</span>
+                  <button id="generateRandomBtn" class="secondary" type="button">Random instance</button>
+                </div>
+              </div>
 
-          <div id="statusBanner" class="status-banner" role="status" aria-live="polite"></div>
+              <div class="field-row cache-config-grid" id="cacheConfigGrid" hidden>
+                <label class="field">
+                  <span id="cacheUniverseLabel">Different elements</span>
+                  <input id="cacheUniverseInput" type="number" min="2" max="18" value="6">
+                </label>
+                <label class="field">
+                  <span id="cacheSizeLabel">Cache size</span>
+                  <input id="cacheSizeInput" type="number" min="1" max="17" value="3">
+                </label>
+                <label class="field">
+                  <span id="queueSizeLabel">Queue size</span>
+                  <input id="queueSizeInput" type="number" min="4" max="40" value="12">
+                </label>
+              </div>
+
+              <label class="field">
+                <span id="csvLabel">Load CSV instance</span>
+                <input id="csvInput" type="file" accept=".csv,text/csv">
+              </label>
+            </section>
+
+            <section class="settings-group">
+              <div class="toolbar">
+                <button id="stepBtn" type="button">Run step</button>
+                <button id="autoBtn" type="button">Auto run</button>
+                <button id="completeBtn" class="accent" type="button">Run to completion</button>
+                <button id="resetBtn" class="secondary" type="button">Reset</button>
+              </div>
+
+              <label class="field compact-field">
+                <span id="speedLabel">Auto speed</span>
+                <select id="speedSelect"></select>
+              </label>
+            </section>
+
+            <div id="statusBanner" class="status-banner" role="status" aria-live="polite"></div>
+          </div>
         </div>
       </aside>
 
@@ -231,6 +252,6 @@
       <p id="footerAiText">Developed with assistance from GPT-5.4.</p>
     </footer>
 
-    <script src="scheduling/js/app.standalone.js?v=20260420-zoomdrag"></script>
+    <script src="scheduling/js/app.standalone.js?v=20260421-caching"></script>
   </body>
 </html>

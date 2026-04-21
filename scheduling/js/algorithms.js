@@ -43,6 +43,14 @@ function decorateJobs(items) {
   }));
 }
 
+function decorateCacheRequests(instance) {
+  return instance.requests.map((value, index) => ({
+    id: `q${index + 1}`,
+    value: String(value),
+    index,
+  }));
+}
+
 function getIntervalComparator(algorithmId) {
   if (algorithmId === "earliest-start") {
     return (a, b) => a.start - b.start || a.finish - b.finish || numericIdCompare(a, b);
@@ -92,6 +100,106 @@ function getLatenessComparator(algorithmId) {
     return (a, b) => a.slack - b.slack || a.deadline - b.deadline || a.duration - b.duration || numericIdCompare(a, b);
   }
   return (a, b) => a.deadline - b.deadline || a.duration - b.duration || numericIdCompare(a, b);
+}
+
+function buildRequestIndexMap(requests, metrics = null) {
+  const positions = new Map();
+  requests.forEach((value, index) => {
+    addOperations(metrics);
+    if (!positions.has(value)) {
+      positions.set(value, []);
+    }
+    positions.get(value).push(index);
+  });
+  return positions;
+}
+
+function advanceRequestPointer(pointers, value, metrics = null) {
+  addOperations(metrics);
+  pointers.set(value, (pointers.get(value) ?? 0) + 1);
+}
+
+function getNextUse(positions, pointers, value) {
+  const futureUses = positions.get(value) ?? [];
+  const pointer = pointers.get(value) ?? 0;
+  return futureUses[pointer] ?? Infinity;
+}
+
+function createSeededRandom(seedText) {
+  let seed = 2166136261;
+  for (const char of seedText) {
+    seed ^= char.charCodeAt(0);
+    seed = Math.imul(seed, 16777619) >>> 0;
+  }
+  return () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+}
+
+function snapshotCache(cacheEntries) {
+  return cacheEntries.map((entry) => entry.value);
+}
+
+function findInCache(cacheEntries, value, metrics = null) {
+  for (let index = 0; index < cacheEntries.length; index += 1) {
+    addOperations(metrics);
+    if (cacheEntries[index].value === value) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function selectCacheVictim(cacheEntries, algorithmId, context) {
+  const { metrics, nextPositions, requestPointers, lastAccessAt, rng } = context;
+
+  if (algorithmId === "farthest-future") {
+    let chosenIndex = 0;
+    let chosenNextUse = -1;
+    const nextUses = [];
+    cacheEntries.forEach((entry, index) => {
+      const nextUse = getNextUse(nextPositions, requestPointers, entry.value);
+      nextUses.push({ value: entry.value, nextUse });
+      addOperations(metrics);
+      if (nextUse > chosenNextUse) {
+        chosenNextUse = nextUse;
+        chosenIndex = index;
+      }
+    });
+    return {
+      victimIndex: chosenIndex,
+      analysis: nextUses,
+    };
+  }
+
+  if (algorithmId === "least-recently-used" || algorithmId === "most-recently-used") {
+    let chosenIndex = 0;
+    let chosenScore = lastAccessAt.get(cacheEntries[0].value) ?? -1;
+    const recency = [];
+    cacheEntries.forEach((entry, index) => {
+      const score = lastAccessAt.get(entry.value) ?? -1;
+      recency.push({ value: entry.value, lastAccess: score });
+      addOperations(metrics);
+      if (
+        (algorithmId === "least-recently-used" && score < chosenScore) ||
+        (algorithmId === "most-recently-used" && score > chosenScore)
+      ) {
+        chosenScore = score;
+        chosenIndex = index;
+      }
+    });
+    return {
+      victimIndex: chosenIndex,
+      analysis: recency,
+    };
+  }
+
+  addOperations(metrics);
+  return {
+    victimIndex: Math.floor(rng() * cacheEntries.length),
+    analysis: [],
+  };
 }
 
 function mergeSortWithMetrics(items, compare, metrics = null) {
@@ -666,12 +774,221 @@ function simulateLateness(items, algorithmId) {
   return current;
 }
 
+function runCachingCore(problemId, instance, algorithmId, recordSteps) {
+  const metrics = { operations: 0 };
+  const requests = decorateCacheRequests(instance);
+  const usesFutureKnowledge = algorithmId === "farthest-future";
+  let nextPositions = new Map();
+  const requestPointers = new Map();
+  const lastAccessAt = new Map();
+  const rng = createSeededRandom(`${problemId}|${algorithmId}|${instance.cacheSize}|${instance.universeSize}|${instance.requests.join(">")}`);
+  const cacheEntries = [];
+  const proofEvents = [];
+
+  const state = {
+    cache: [],
+    currentId: null,
+    currentIndex: null,
+    currentRequest: null,
+    hits: 0,
+    misses: 0,
+    processedCount: 0,
+    requestOutcomes: [],
+    lastOutcome: null,
+    lastEvicted: null,
+    lastLoaded: null,
+    objectiveValue: 0,
+  };
+
+  const steps = [];
+  let stepIndex = 0;
+  if (recordSteps) {
+    steps.push(makeStep(stepIndex++, null, "step_ready", {}, state, metrics.operations));
+  }
+  if (usesFutureKnowledge) {
+    nextPositions = buildRequestIndexMap(instance.requests, metrics);
+  }
+  if (recordSteps) {
+    addOperations(metrics);
+    steps.push(makeStep(stepIndex++, 1, "step_cache_initialized", { size: instance.cacheSize }, state, metrics.operations));
+  }
+
+  requests.forEach((request, index) => {
+    state.currentId = request.id;
+    state.currentIndex = index;
+    state.currentRequest = request.value;
+    state.lastOutcome = null;
+    state.lastEvicted = null;
+    state.lastLoaded = null;
+
+    addOperations(metrics);
+    if (recordSteps) {
+      steps.push(makeStep(stepIndex++, 2, "step_consider_request", { value: request.value, index: index + 1 }, state, metrics.operations));
+    }
+
+    const hitIndex = findInCache(cacheEntries, request.value, metrics);
+    advanceRequestPointer(requestPointers, request.value, usesFutureKnowledge ? metrics : null);
+
+    if (hitIndex >= 0) {
+      state.hits += 1;
+      state.processedCount = index + 1;
+      state.lastOutcome = "hit";
+      lastAccessAt.set(request.value, index);
+      addOperations(metrics, 2);
+      state.cache = snapshotCache(cacheEntries);
+      state.requestOutcomes.push({
+        index,
+        value: request.value,
+        outcome: "hit",
+        evicted: null,
+        cacheAfter: state.cache,
+      });
+      if (recordSteps) {
+        steps.push(makeStep(stepIndex++, 4, "step_cache_hit", { value: request.value }, state, metrics.operations));
+      }
+      return;
+    }
+
+    state.misses += 1;
+    state.objectiveValue = state.misses;
+    state.processedCount = index + 1;
+    state.lastLoaded = request.value;
+
+    if (cacheEntries.length < instance.cacheSize) {
+      cacheEntries.push({ value: request.value, insertedAt: index });
+      lastAccessAt.set(request.value, index);
+      state.cache = snapshotCache(cacheEntries);
+      state.lastOutcome = "miss-load";
+      state.requestOutcomes.push({
+        index,
+        value: request.value,
+        outcome: "miss-load",
+        evicted: null,
+        cacheAfter: state.cache,
+      });
+      addOperations(metrics, 3);
+      if (recordSteps) {
+        steps.push(makeStep(stepIndex++, 5, "step_cache_miss_load", { value: request.value }, state, metrics.operations));
+      }
+      return;
+    }
+
+    const cacheBefore = snapshotCache(cacheEntries);
+    const victimSelection = selectCacheVictim(cacheEntries, algorithmId, {
+      metrics,
+      nextPositions,
+      requestPointers,
+      lastAccessAt,
+      rng,
+    });
+    const victim = cacheEntries.splice(victimSelection.victimIndex, 1)[0];
+    lastAccessAt.delete(victim.value);
+    cacheEntries.push({ value: request.value, insertedAt: index });
+    lastAccessAt.set(request.value, index);
+
+    state.lastOutcome = "miss-evict";
+    state.lastEvicted = victim.value;
+    state.cache = snapshotCache(cacheEntries);
+    state.requestOutcomes.push({
+      index,
+      value: request.value,
+      outcome: "miss-evict",
+      evicted: victim.value,
+      cacheAfter: state.cache,
+    });
+    addOperations(metrics, 4);
+
+    proofEvents.push({
+      requestIndex: index + 1,
+      requestValue: request.value,
+      cacheBefore,
+      victim: victim.value,
+      analysis: victimSelection.analysis,
+    });
+
+    if (recordSteps) {
+      steps.push(
+        makeStep(
+          stepIndex++,
+          6,
+          "step_cache_miss_evict",
+          { value: request.value, evicted: victim.value },
+          state,
+          metrics.operations,
+        ),
+      );
+    }
+  });
+
+  state.currentId = null;
+  state.currentIndex = null;
+  state.currentRequest = null;
+  state.lastOutcome = null;
+  if (recordSteps) {
+    steps.push(makeStep(stepIndex++, null, "step_finished", {}, state, metrics.operations));
+  }
+
+  return {
+    problemId,
+    algorithmId,
+    instance: {
+      universeSize: instance.universeSize,
+      cacheSize: instance.cacheSize,
+      queueSize: instance.requests.length,
+      requests: [...instance.requests],
+    },
+    items: requests,
+    sortedItems: requests,
+    steps,
+    operationTotal: metrics.operations,
+    result: {
+      cache: snapshotCache(cacheEntries),
+      hits: state.hits,
+      misses: state.misses,
+      objectiveValue: state.misses,
+      requestOutcomes: state.requestOutcomes,
+    },
+    optimal: {
+      objectiveValue: 0,
+      cache: [],
+    },
+    proof: {
+      style: problemId === "optimalCaching" ? "cacheExchange" : "operatingBenchmark",
+      evictionEvents: proofEvents,
+      requests: [...instance.requests],
+      cacheSize: instance.cacheSize,
+    },
+  };
+}
+
+function simulateCaching(problemId, instance, algorithmId) {
+  const benchmarkAlgorithmId = problemId === "optimalCaching" ? "farthest-future" : "least-recently-used";
+  const current = runCachingCore(problemId, instance, algorithmId, true);
+  const benchmark = runCachingCore(problemId, instance, benchmarkAlgorithmId, false);
+  current.optimal = {
+    objectiveValue: benchmark.result.objectiveValue,
+    cache: benchmark.result.cache,
+    hits: benchmark.result.hits,
+    misses: benchmark.result.misses,
+  };
+  if (problemId === "realCaching") {
+    current.proof.benchmarkAlgorithmId = benchmarkAlgorithmId;
+  }
+  return current;
+}
+
 export function simulateProblem(problemId, algorithmId, items) {
   if (problemId === "intervalScheduling") {
     return simulateIntervalScheduling(items, algorithmId);
   }
   if (problemId === "intervalPartitioning") {
     return simulatePartitioning(items, algorithmId);
+  }
+  if (problemId === "minimizeLateness") {
+    return simulateLateness(items, algorithmId);
+  }
+  if (problemId === "optimalCaching" || problemId === "realCaching") {
+    return simulateCaching(problemId, items, algorithmId);
   }
   return simulateLateness(items, algorithmId);
 }
@@ -691,6 +1008,21 @@ export function computeOptimalOutcome(problemId, items) {
       witnessIds: depthInfo.witnessIds,
     };
   }
+  if (problemId === "minimizeLateness") {
+    const optimal = runLatenessCore(items, "earliest-deadline", false);
+    return {
+      objectiveValue: optimal.result.objectiveValue,
+      schedule: optimal.result.schedule,
+    };
+  }
+  if (problemId === "optimalCaching" || problemId === "realCaching") {
+    const benchmarkAlgorithmId = problemId === "optimalCaching" ? "farthest-future" : "least-recently-used";
+    const optimal = runCachingCore(problemId, items, benchmarkAlgorithmId, false);
+    return {
+      objectiveValue: optimal.result.objectiveValue,
+      cache: optimal.result.cache,
+    };
+  }
   const optimal = runLatenessCore(items, "earliest-deadline", false);
   return {
     objectiveValue: optimal.result.objectiveValue,
@@ -699,6 +1031,9 @@ export function computeOptimalOutcome(problemId, items) {
 }
 
 export function buildConflictEdges(problemId, items, schedule = []) {
+  if (problemId === "optimalCaching" || problemId === "realCaching") {
+    return [];
+  }
   if (problemId === "minimizeLateness") {
     const inversions = countInversionsByDeadline(schedule);
     return inversions.pairs.map(([from, to]) => ({ from, to, type: "inversion" }));

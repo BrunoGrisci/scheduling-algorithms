@@ -9,8 +9,12 @@ import {
   buildRandomInstance,
   clampRandomSize,
   getAlgorithm,
+  getAvailableViewModes,
+  getCacheConfigFromItems,
   getDefaultPresetId,
   getPreset,
+  isCachingProblem,
+  normalizeCacheConfig,
   parseCsvText,
 } from "./data.js";
 import { simulateProblem } from "./algorithms.js";
@@ -22,15 +26,21 @@ function cloneData(value) {
 }
 
 const elements = {
+  mainLayout: document.getElementById("mainLayout"),
   eyebrowText: document.getElementById("eyebrowText"),
   appTitle: document.getElementById("appTitle"),
   appSubtitle: document.getElementById("appSubtitle"),
+  settingsToggleBtn: document.getElementById("settingsToggleBtn"),
+  settingsShell: document.getElementById("settingsShell"),
   controlsKicker: document.getElementById("controlsKicker"),
   controlsTitle: document.getElementById("controlsTitle"),
   problemLabel: document.getElementById("problemLabel"),
   algorithmLabel: document.getElementById("algorithmLabel"),
   presetLabel: document.getElementById("presetLabel"),
   randomSizeLabel: document.getElementById("randomSizeLabel"),
+  cacheSizeLabel: document.getElementById("cacheSizeLabel"),
+  cacheUniverseLabel: document.getElementById("cacheUniverseLabel"),
+  queueSizeLabel: document.getElementById("queueSizeLabel"),
   randomActionLabel: document.getElementById("randomActionLabel"),
   generateRandomBtn: document.getElementById("generateRandomBtn"),
   csvLabel: document.getElementById("csvLabel"),
@@ -45,8 +55,14 @@ const elements = {
   algorithmSelect: document.getElementById("algorithmSelect"),
   presetSelect: document.getElementById("presetSelect"),
   randomSizeInput: document.getElementById("randomSizeInput"),
+  randomSizeField: document.getElementById("randomSizeField"),
+  cacheSizeInput: document.getElementById("cacheSizeInput"),
+  cacheUniverseInput: document.getElementById("cacheUniverseInput"),
+  queueSizeInput: document.getElementById("queueSizeInput"),
   csvInput: document.getElementById("csvInput"),
   speedSelect: document.getElementById("speedSelect"),
+  scheduleRandomRow: document.getElementById("scheduleRandomRow"),
+  cacheConfigGrid: document.getElementById("cacheConfigGrid"),
   summaryCards: document.getElementById("summaryCards"),
   statusBanner: document.getElementById("statusBanner"),
   viewTabs: [...document.querySelectorAll("#viewTabs .tab")],
@@ -85,6 +101,7 @@ const initialLanguage = LANGUAGES.includes(localStorage.getItem(STORAGE_KEYS.lan
   ? localStorage.getItem(STORAGE_KEYS.language)
   : "en";
 const initialTheme = localStorage.getItem(STORAGE_KEYS.theme) === "dark" ? "dark" : "light";
+const initialSettingsCollapsed = localStorage.getItem(STORAGE_KEYS.settingsCollapsed) === "true";
 const initialProblemId = "intervalScheduling";
 const initialAlgorithmId = ALGORITHMS[initialProblemId][0].id;
 const initialPresetId = getDefaultPresetId(initialProblemId);
@@ -102,6 +119,7 @@ const state = {
   detailMode: "summary",
   stepIndex: 0,
   simulation: simulateProblem(initialProblemId, initialAlgorithmId, initialItems),
+  settingsCollapsed: initialSettingsCollapsed,
   autoRunHandle: null,
   autoRunning: false,
   speed: 1,
@@ -129,6 +147,20 @@ const DETAIL_LABEL_KEYS = {
   log: "details_log",
 };
 
+const VIEW_LABEL_KEYS = {
+  code: "view_code",
+  interval: null,
+  graph: "view_graph",
+  proof: "view_proof",
+};
+
+const VIEW_TITLE_KEYS = {
+  code: "view_title_code",
+  interval: null,
+  graph: "view_title_graph",
+  proof: "view_title_proof",
+};
+
 function setStatus(key, params = {}) {
   state.statusKey = key;
   state.statusParams = params;
@@ -142,6 +174,34 @@ function updateTheme() {
   document.body.dataset.theme = state.theme;
   localStorage.setItem(STORAGE_KEYS.theme, state.theme);
   elements.themeToggle.textContent = state.theme === "dark" ? "☾" : "☀";
+}
+
+function syncCacheControlsFromItems() {
+  if (!isCachingProblem(state.problemId)) {
+    elements.randomSizeInput.value = String(Array.isArray(state.items) ? state.items.length : clampRandomSize(Number(elements.randomSizeInput.value)));
+    return;
+  }
+
+  const config = getCacheConfigFromItems(state.items);
+  elements.cacheUniverseInput.value = String(config.universeSize);
+  elements.cacheSizeInput.value = String(config.cacheSize);
+  elements.queueSizeInput.value = String(config.queueSize);
+}
+
+function ensureSupportedView() {
+  const availableViewModes = getAvailableViewModes(state.problemId);
+  if (!availableViewModes.includes(state.viewMode)) {
+    state.viewMode = availableViewModes[0];
+  }
+}
+
+function applySettingsCollapsed() {
+  elements.mainLayout.classList.toggle("settings-collapsed", state.settingsCollapsed);
+  elements.settingsShell.hidden = state.settingsCollapsed;
+  elements.settingsToggleBtn.setAttribute("aria-pressed", state.settingsCollapsed ? "true" : "false");
+  elements.settingsToggleBtn.setAttribute("aria-expanded", state.settingsCollapsed ? "false" : "true");
+  elements.settingsToggleBtn.setAttribute("title", state.t(state.settingsCollapsed ? "settings_toggle_show" : "settings_toggle_hide"));
+  localStorage.setItem(STORAGE_KEYS.settingsCollapsed, String(state.settingsCollapsed));
 }
 
 function populateProblemOptions() {
@@ -362,15 +422,22 @@ function beginBoardDrag(event) {
 
 function updateStaticText() {
   const t = state.t;
+  const problem = getCurrentProblem();
+  const supportsGraph = problem.supportsGraph !== false;
   elements.eyebrowText.textContent = t("eyebrow");
   elements.appTitle.textContent = t("app_title");
   elements.appSubtitle.textContent = t("app_subtitle");
+  elements.settingsToggleBtn.textContent = state.settingsCollapsed ? "»" : "«";
+  elements.settingsToggleBtn.setAttribute("aria-label", t(state.settingsCollapsed ? "settings_toggle_show" : "settings_toggle_hide"));
   elements.controlsKicker.textContent = t("controls_kicker");
   elements.controlsTitle.textContent = t("controls_title");
   elements.problemLabel.textContent = t("problem_label");
   elements.algorithmLabel.textContent = t("algorithm_label");
   elements.presetLabel.textContent = t("preset_label");
   elements.randomSizeLabel.textContent = t("random_size_label");
+  elements.cacheSizeLabel.textContent = t("cache_size_label");
+  elements.cacheUniverseLabel.textContent = t("cache_universe_label");
+  elements.queueSizeLabel.textContent = t("queue_size_label");
   elements.randomActionLabel.textContent = t("random_action_label");
   elements.generateRandomBtn.textContent = t("random_btn");
   elements.csvLabel.textContent = t("csv_label");
@@ -379,10 +446,15 @@ function updateStaticText() {
   elements.completeBtn.textContent = t("complete_btn");
   elements.speedLabel.textContent = t("speed_label");
   elements.stepCounterLabel.textContent = t("step_counter_label");
-  elements.viewTabs[0].textContent = t("view_code");
-  elements.viewTabs[1].textContent = t("view_interval");
-  elements.viewTabs[2].textContent = t("view_graph");
-  elements.viewTabs[3].textContent = t("view_proof");
+  elements.viewTabs.forEach((tab) => {
+    const key = tab.dataset.view === "interval" ? problem.primaryViewLabelKey : VIEW_LABEL_KEYS[tab.dataset.view];
+    if (key) {
+      tab.textContent = t(key);
+    }
+    const supported = supportsGraph || tab.dataset.view !== "graph";
+    tab.hidden = !supported;
+    tab.disabled = !supported;
+  });
   elements.viewKicker.textContent = t("view_kicker");
   elements.viewCaption.textContent = t("board_caption");
   elements.detailsKicker.textContent = t("details_kicker");
@@ -401,6 +473,10 @@ function updateStaticText() {
   elements.helpContent.innerHTML = getHelpHtml(state.language, t);
   elements.referencesContent.innerHTML = getReferencesHtml(state.language);
   elements.themeToggle.setAttribute("aria-label", state.theme === "dark" ? "Switch to light theme" : "Switch to dark theme");
+  const cachingProblem = isCachingProblem(state.problemId);
+  elements.randomSizeField.hidden = cachingProblem;
+  elements.scheduleRandomRow.classList.toggle("single-action-row", cachingProblem);
+  elements.cacheConfigGrid.hidden = !cachingProblem;
 }
 
 function updateLiveBadge() {
@@ -477,12 +553,12 @@ function render() {
   const algorithm = getCurrentAlgorithm();
   const preset = getCurrentPreset();
   const currentStep = state.simulation.steps[state.stepIndex];
-
   populateProblemOptions();
   populateAlgorithmOptions();
   populatePresetOptions();
   populateSpeedOptions();
   updateStaticText();
+  applySettingsCollapsed();
 
   elements.langEnBtn.classList.toggle("active", state.language === "en");
   elements.langPtBtn.classList.toggle("active", state.language === "pt-BR");
@@ -500,7 +576,8 @@ function render() {
     pane.classList.toggle("active", pane.dataset.detailPanel === state.detailMode);
   });
   elements.autoBtn.textContent = t(state.autoRunning ? "stop_btn" : "auto_btn");
-  elements.viewTitle.textContent = t(`view_title_${state.viewMode}`);
+  const viewTitleKey = state.viewMode === "interval" ? problem.primaryViewTitleKey : VIEW_TITLE_KEYS[state.viewMode];
+  elements.viewTitle.textContent = t(viewTitleKey);
   const currentOperationCount = currentStep?.operationCount ?? state.simulation.operationTotal ?? 0;
   const totalOperationCount = state.simulation.operationTotal ?? currentOperationCount;
   elements.stepCounterValue.textContent = `${currentOperationCount} / ${totalOperationCount}`;
@@ -554,6 +631,8 @@ function switchProblem(problemId) {
   state.algorithmId = ALGORITHMS[problemId][0].id;
   state.presetId = getDefaultPresetId(problemId);
   state.items = cloneData(getPreset(problemId, state.presetId)?.items ?? []);
+  ensureSupportedView();
+  syncCacheControlsFromItems();
   resetBoardOffsets(problemId);
   refreshSimulation(true);
   setStatus("banner_preset_loaded");
@@ -564,6 +643,7 @@ function switchAlgorithm(algorithmId) {
   stopAutoRun(true);
   stopBoardDrag();
   state.algorithmId = algorithmId;
+  ensureSupportedView();
   refreshSimulation(true);
   setStatus("banner_reset");
   render();
@@ -574,6 +654,7 @@ function switchPreset(presetId) {
   stopBoardDrag();
   state.presetId = presetId;
   state.items = cloneData(getPreset(state.problemId, presetId)?.items ?? []);
+  syncCacheControlsFromItems();
   resetBoardOffsets();
   refreshSimulation(true);
   setStatus("banner_preset_loaded");
@@ -583,10 +664,22 @@ function switchPreset(presetId) {
 function generateRandom() {
   stopAutoRun(true);
   stopBoardDrag();
-  const size = clampRandomSize(Number(elements.randomSizeInput.value));
-  elements.randomSizeInput.value = String(size);
   state.presetId = "";
-  state.items = buildRandomInstance(state.problemId, size);
+  if (isCachingProblem(state.problemId)) {
+    const config = normalizeCacheConfig({
+      universeSize: Number(elements.cacheUniverseInput.value),
+      cacheSize: Number(elements.cacheSizeInput.value),
+      queueSize: Number(elements.queueSizeInput.value),
+    });
+    elements.cacheUniverseInput.value = String(config.universeSize);
+    elements.cacheSizeInput.value = String(config.cacheSize);
+    elements.queueSizeInput.value = String(config.queueSize);
+    state.items = buildRandomInstance(state.problemId, config);
+  } else {
+    const size = clampRandomSize(Number(elements.randomSizeInput.value));
+    elements.randomSizeInput.value = String(size);
+    state.items = buildRandomInstance(state.problemId, size);
+  }
   resetBoardOffsets();
   refreshSimulation(true);
   setStatus("banner_random_loaded");
@@ -603,6 +696,7 @@ async function importCsv(file) {
     const text = await file.text();
     state.items = parseCsvText(state.problemId, text);
     state.presetId = "";
+    syncCacheControlsFromItems();
     resetBoardOffsets();
     refreshSimulation(true);
     setStatus("banner_csv_loaded");
@@ -657,6 +751,11 @@ function toggleAutoRun() {
   queueAutoRun();
 }
 
+function toggleSettingsPanel() {
+  state.settingsCollapsed = !state.settingsCollapsed;
+  applySettingsCollapsed();
+}
+
 function openModal(modal) {
   modal.hidden = false;
 }
@@ -686,6 +785,10 @@ function bindEvents() {
   elements.algorithmSelect.addEventListener("change", (event) => switchAlgorithm(event.target.value));
   elements.presetSelect.addEventListener("change", (event) => switchPreset(event.target.value));
   elements.generateRandomBtn.addEventListener("click", generateRandom);
+  elements.settingsToggleBtn.addEventListener("click", () => {
+    toggleSettingsPanel();
+    render();
+  });
   elements.csvInput.addEventListener("change", (event) => importCsv(event.target.files?.[0]));
   elements.resetBtn.addEventListener("click", resetExecution);
   elements.stepBtn.addEventListener("click", stepForward);
@@ -703,6 +806,9 @@ function bindEvents() {
 
   elements.viewTabs.forEach((tab) => {
     tab.addEventListener("click", () => {
+      if (tab.hidden) {
+        return;
+      }
       state.viewMode = tab.dataset.view;
       render();
     });
@@ -758,6 +864,8 @@ function bindEvents() {
 function init() {
   updateTranslator();
   updateTheme();
+  syncCacheControlsFromItems();
+  ensureSupportedView();
   bindEvents();
   initResizableHandles(document);
   render();
