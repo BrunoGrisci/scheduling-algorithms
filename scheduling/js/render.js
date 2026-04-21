@@ -156,6 +156,38 @@ function xScale(value, bounds, width, padding) {
   return padding + ((value - bounds.min) / (bounds.max - bounds.min)) * (width - padding * 2);
 }
 
+function getBoardZoom(boardState, viewMode) {
+  return boardState?.zoom?.[viewMode] ?? 1;
+}
+
+function getBoardOffset(boardState, problemId, itemId) {
+  return boardState?.offsets?.[problemId]?.[itemId] ?? { x: 0, y: 0 };
+}
+
+function renderBoardFigure(viewMode, legendMarkup, svgMarkup, boardState, t, hint = "", note = "") {
+  const zoom = Math.round(getBoardZoom(boardState, viewMode) * 100);
+  return `
+    <div class="board-figure" data-board-figure="${viewMode}">
+      <div class="board-tools">
+        <div class="board-tools-copy">
+          ${legendMarkup}
+          ${hint ? `<p class="board-hint">${hint}</p>` : ""}
+          ${note ? `<p class="board-note">${note}</p>` : ""}
+        </div>
+        <div class="zoom-panel" role="group" aria-label="${t("zoom_controls_label")}">
+          <button type="button" class="zoom-btn secondary" data-zoom-action="out" aria-label="${t("zoom_out_label")}">−</button>
+          <output class="zoom-readout" data-zoom-readout>${zoom}%</output>
+          <button type="button" class="zoom-btn secondary" data-zoom-action="in" aria-label="${t("zoom_in_label")}">+</button>
+          <button type="button" class="zoom-fit-btn secondary" data-zoom-action="reset" aria-label="${t("zoom_reset_label")}">${t("zoom_fit_btn")}</button>
+        </div>
+      </div>
+      <div class="board-stage" data-board-stage>
+        ${svgMarkup}
+      </div>
+    </div>
+  `;
+}
+
 function buildAxis(bounds, width, height, tickCount = 8) {
   const padding = 52;
   const ticks = [];
@@ -172,11 +204,15 @@ function buildAxis(bounds, width, height, tickCount = 8) {
 
 function renderDataChips(problemId, simulation, stepState, t) {
   if (problemId === "intervalScheduling") {
+    const thirdLabel = simulation.algorithmId === "fewest-conflicts" ? t("state_considered") : t("state_last_finish");
+    const thirdValue = simulation.algorithmId === "fewest-conflicts"
+      ? stepState.processedIds?.length ?? 0
+      : formatValue(stepState.lastFinish);
     return `
       <div class="chip-grid">
         <div class="data-chip"><span>${t("state_selected")}</span><strong>${stepState.selectedIds?.length ?? 0}</strong></div>
         <div class="data-chip"><span>${t("state_rejected")}</span><strong>${stepState.rejectedIds?.length ?? 0}</strong></div>
-        <div class="data-chip"><span>${t("state_last_finish")}</span><strong>${formatValue(stepState.lastFinish)}</strong></div>
+        <div class="data-chip"><span>${thirdLabel}</span><strong>${thirdValue}</strong></div>
       </div>
     `;
   }
@@ -322,9 +358,9 @@ function renderCodeView(problemId, algorithm, simulation, step, t) {
   `;
 }
 
-function renderIntervalSchedulingSvg(simulation, step, t) {
+function renderIntervalSchedulingSvg(simulation, step, t, boardState) {
   const width = 900;
-  const rowHeight = 58;
+  const rowHeight = 56;
   const padding = 52;
   const bounds = buildTimelineBounds("intervalScheduling", simulation, step.state);
   const rows = [...simulation.items].sort((a, b) => a.start - b.start || a.finish - b.finish || a.id.localeCompare(b.id));
@@ -332,12 +368,23 @@ function renderIntervalSchedulingSvg(simulation, step, t) {
   const bars = rows
     .map((item, index) => {
       const status = getStatusForItem("intervalScheduling", item.id, step.state);
+      const offset = getBoardOffset(boardState, "intervalScheduling", item.id);
       const x = xScale(item.start, bounds, width, padding);
       const end = xScale(item.finish, bounds, width, padding);
       const y = 36 + index * rowHeight;
       const label = end - x >= 26 ? escapeHtml(item.id) : "";
+      const translate = offset.y ? ` transform="translate(0 ${offset.y})"` : "";
       return `
-        <g class="timeline-row status-${status}">
+        <g
+          class="timeline-row status-${status} draggable-item drag-y"
+          data-drag-item
+          data-problem-id="intervalScheduling"
+          data-item-id="${escapeHtml(item.id)}"
+          data-drag-axis="y"
+          data-min-offset="${28 - y}"
+          data-max-offset="${height - 58 - y}"
+          ${translate}
+        >
           <text x="14" y="${y + 18}" class="row-label">${escapeHtml(item.id)}</text>
           <rect x="${x}" y="${y}" width="${Math.max(end - x, 16)}" height="22" rx="10" class="interval-bar status-${status}"></rect>
           ${label ? `<text x="${(x + end) / 2}" y="${y + 15}" class="bar-label" text-anchor="middle">${label}</text>` : ""}
@@ -346,194 +393,167 @@ function renderIntervalSchedulingSvg(simulation, step, t) {
     })
     .join("");
 
-  return `
-    <div class="legend-row">
-      <span class="legend-item"><i class="swatch status-selected"></i>${t("status_selected")}</span>
-      <span class="legend-item"><i class="swatch status-rejected"></i>${t("status_rejected")}</span>
-      <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
-    </div>
-    <svg viewBox="0 0 ${width} ${height}" class="timeline-svg" aria-label="${t("view_interval")}">
-      ${buildAxis(bounds, width, height)}
-      ${bars}
-    </svg>
-  `;
+  return renderBoardFigure(
+    "interval",
+    `
+      <div class="legend-row">
+        <span class="legend-item"><i class="swatch status-selected"></i>${t("status_selected")}</span>
+        <span class="legend-item"><i class="swatch status-rejected"></i>${t("status_rejected")}</span>
+        <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
+      </div>
+    `,
+    `
+      <svg viewBox="0 0 ${width} ${height}" class="timeline-svg" data-board-svg aria-label="${t("view_interval")}">
+        ${buildAxis(bounds, width, height)}
+        ${bars}
+      </svg>
+    `,
+    boardState,
+    t,
+    t("board_hint_drag_vertical"),
+  );
 }
 
-function renderPartitioningSvg(simulation, step, t) {
+function renderPartitioningSvg(simulation, step, t, boardState) {
   const width = 900;
   const displayItems = getDisplayItems(simulation, step.state);
-  const rooms = step.state.rooms ?? [];
-  const assignedIds = new Set(step.state.assignedIds ?? []);
-  const previewRowHeight = 44;
-  const roomRowHeight = 64;
   const bounds = buildTimelineBounds("intervalPartitioning", simulation, step.state);
+  const rowHeight = 58;
   const padding = 52;
-  const previewTop = 42;
-  const previewHeight = Math.max(displayItems.length, 1) * previewRowHeight;
-  const roomTop = previewTop + previewHeight + 52;
-  const roomCount = Math.max(rooms.length, 1);
-  const height = roomTop + roomCount * roomRowHeight + 54;
+  const height = Math.max(220, displayItems.length * rowHeight + 84);
+  const roomAssignments = getRoomAssignmentMap(step.state.rooms);
 
-  const previewLayers = displayItems
-    .map((item, itemIndex) => {
-      const y = previewTop + itemIndex * previewRowHeight;
+  const bars = displayItems
+    .map((item, index) => {
+      const offset = getBoardOffset(boardState, "intervalPartitioning", item.id);
       const x = xScale(item.start, bounds, width, padding);
       const end = xScale(item.finish, bounds, width, padding);
+      const y = 36 + index * rowHeight;
       const label = end - x >= 26 ? escapeHtml(item.id) : "";
-      const isAssigned = assignedIds.has(item.id);
-      const ghostClass = isAssigned ? " partition-ghost" : "";
-      const currentClass = item.id === step.state.currentId && !isAssigned ? " room-current" : "";
+      const roomId = roomAssignments.get(item.id);
+      const fillClass = roomId ? getRoomColorClass(roomId) : "partition-preview";
+      const currentClass = item.id === step.state.currentId ? " room-current" : "";
+      const translate = offset.y ? ` transform="translate(0 ${offset.y})"` : "";
       return `
-        <g class="partition-preview-row">
-          <text x="12" y="${y + 18}" class="row-label">${escapeHtml(item.id)}</text>
-          <rect x="${x}" y="${y}" width="${Math.max(end - x, 18)}" height="24" rx="12" class="interval-bar partition-preview${ghostClass}${currentClass}"></rect>
+        <g
+          class="timeline-row draggable-item drag-y"
+          data-drag-item
+          data-problem-id="intervalPartitioning"
+          data-item-id="${escapeHtml(item.id)}"
+          data-drag-axis="y"
+          data-min-offset="${28 - y}"
+          data-max-offset="${height - 58 - y}"
+          ${translate}
+        >
+          <text x="14" y="${y + 18}" class="row-label">${escapeHtml(item.id)}</text>
+          <rect x="${x}" y="${y}" width="${Math.max(end - x, 18)}" height="24" rx="12" class="interval-bar ${fillClass}${currentClass}"></rect>
           ${label ? `<text x="${(x + end) / 2}" y="${y + 16}" class="bar-label" text-anchor="middle">${label}</text>` : ""}
         </g>
       `;
     })
     .join("");
 
-  const roomLayers =
-    rooms.length === 0
-      ? `<text x="12" y="${roomTop + 20}" class="partition-placeholder">${t("partition_rooms_empty")}</text>`
-      : rooms
-          .map((room, roomIndex) => {
-            const y = roomTop + roomIndex * roomRowHeight;
-            const roomColorClass = getRoomColorClass(room.roomId);
-            const bars = room.items
-              .map((item) => {
-                const x = xScale(item.start, bounds, width, padding);
-                const end = xScale(item.finish, bounds, width, padding);
-                const label = end - x >= 26 ? escapeHtml(item.id) : "";
-                const currentClass = item.id === step.state.currentId ? " room-current" : "";
-                return `
-                  <g>
-                    <rect x="${x}" y="${y}" width="${Math.max(end - x, 18)}" height="24" rx="12" class="interval-bar ${roomColorClass}${currentClass}"></rect>
-                    ${label ? `<text x="${(x + end) / 2}" y="${y + 16}" class="bar-label" text-anchor="middle">${label}</text>` : ""}
-                  </g>
-                `;
-              })
-              .join("");
-            return `
-              <g class="room-lane">
-                <text x="12" y="${y + 18}" class="row-label">${t("room_label", { room: room.roomId })}</text>
-                ${bars}
-              </g>
-            `;
-          })
-          .join("");
-
-  return `
-    <div class="legend-row">
-      <span class="legend-item"><i class="swatch partition-preview-swatch"></i>${t("partition_preview_label")}</span>
-      <span class="legend-item"><i class="swatch room-color-1"></i>${t("legend_room_assignment")}</span>
-      <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
-    </div>
-    <svg viewBox="0 0 ${width} ${height}" class="timeline-svg" aria-label="${t("view_interval")}">
-      ${buildAxis(bounds, width, height)}
-      <text x="12" y="24" class="partition-section-label">${t("partition_preview_label")}</text>
-      ${previewLayers}
-      <line x1="12" y1="${roomTop - 18}" x2="${width - 12}" y2="${roomTop - 18}" class="partition-divider"></line>
-      <text x="12" y="${roomTop - 28}" class="partition-section-label">${t("partition_rooms_label")}</text>
-      ${roomLayers}
-    </svg>
-  `;
+  return renderBoardFigure(
+    "interval",
+    `
+      <div class="legend-row">
+        <span class="legend-item"><i class="swatch partition-preview-swatch"></i>${t("partition_preview_label")}</span>
+        <span class="legend-item"><i class="swatch room-color-1"></i>${t("legend_room_assignment")}</span>
+        <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
+      </div>
+    `,
+    `
+      <svg viewBox="0 0 ${width} ${height}" class="timeline-svg" data-board-svg aria-label="${t("view_interval")}">
+        ${buildAxis(bounds, width, height)}
+        ${bars}
+      </svg>
+    `,
+    boardState,
+    t,
+    t("board_hint_drag_vertical"),
+  );
 }
 
-function renderLatenessSvg(simulation, step, t) {
+function renderLatenessSvg(simulation, step, t, boardState) {
   const width = 920;
-  const pendingItems = getDisplayItems(simulation, step.state);
-  const schedule = step.state.scheduled ?? [];
-  const showPreview = schedule.length === 0;
-  const previewRowHeight = 52;
-  const height = showPreview ? Math.max(220, 90 + pendingItems.length * previewRowHeight) : 220;
+  const displayItems = getDisplayItems(simulation, step.state);
+  const scheduleMap = new Map((step.state.scheduled ?? []).map((item) => [item.id, item]));
+  const rowHeight = 58;
+  const height = Math.max(220, 84 + displayItems.length * rowHeight);
   const bounds = buildTimelineBounds("minimizeLateness", simulation, step.state);
   const padding = 52;
-  const deadlineMarkers = showPreview
-    ? pendingItems
-        .map((item, index) => {
-          const x = xScale(item.deadline, bounds, width, padding);
-          const y = 54 + index * previewRowHeight;
-          return `
-            <g>
-              <line x1="${x}" y1="${y - 8}" x2="${x}" y2="${y + 22}" class="deadline-line"></line>
-              <text x="${x}" y="${y - 14}" class="axis-label" text-anchor="middle">d=${item.deadline}</text>
-            </g>
-          `;
-        })
-        .join("")
-    : simulation.items
-        .map((item) => {
-          const x = xScale(item.deadline, bounds, width, padding);
-          return `
-            <g>
-              <line x1="${x}" y1="30" x2="${x}" y2="164" class="deadline-line"></line>
-              <text x="${x}" y="20" class="axis-label" text-anchor="middle">${escapeHtml(item.id)}: d=${item.deadline}</text>
-            </g>
-          `;
-        })
-        .join("");
 
-  const bars = showPreview
-    ? pendingItems
-        .map((item, index) => {
-          const x = xScale(0, bounds, width, padding);
-          const end = xScale(item.duration, bounds, width, padding);
-          const y = 54 + index * previewRowHeight;
-          const status = getStatusForItem("minimizeLateness", item.id, step.state);
-          const label = end - x >= 26 ? escapeHtml(item.id) : "";
-          return `
-            <g>
-              <text x="12" y="${y + 16}" class="row-label">${escapeHtml(item.id)}</text>
-              <rect x="${x}" y="${y}" width="${Math.max(end - x, 24)}" height="24" rx="12" class="interval-bar status-${status} lateness-preview"></rect>
-              ${label ? `<text x="${(x + end) / 2}" y="${y + 16}" class="bar-label" text-anchor="middle">${label}</text>` : ""}
-            </g>
-          `;
-        })
-        .join("")
-    : schedule
-        .map((item) => {
-          const x = xScale(item.start, bounds, width, padding);
-          const end = xScale(item.finish, bounds, width, padding);
-          const deadlineX = xScale(item.deadline, bounds, width, padding);
-          const latenessWidth = item.finish > item.deadline ? end - deadlineX : 0;
-          return `
-            <g class="${item.id === step.state.currentId ? "current-job" : ""}">
-              <rect x="${x}" y="78" width="${Math.max(end - x, 24)}" height="32" rx="16" class="interval-bar status-scheduled"></rect>
-              ${latenessWidth > 0 ? `<rect x="${deadlineX}" y="78" width="${latenessWidth}" height="32" rx="16" class="lateness-bar"></rect>` : ""}
-              <text x="${(x + end) / 2}" y="99" class="bar-label" text-anchor="middle">${escapeHtml(item.id)}</text>
-            </g>
-          `;
-        })
-        .join("");
+  const bars = displayItems
+    .map((item, index) => {
+      const scheduled = scheduleMap.get(item.id);
+      const status = getStatusForItem("minimizeLateness", item.id, step.state);
+      const start = scheduled ? scheduled.start : 0;
+      const finish = scheduled ? scheduled.finish : item.duration;
+      const x = xScale(start, bounds, width, padding);
+      const end = xScale(finish, bounds, width, padding);
+      const deadlineX = xScale(item.deadline, bounds, width, padding);
+      const y = 36 + index * rowHeight;
+      const offset = getBoardOffset(boardState, "minimizeLateness", item.id);
+      const translate = offset.x ? ` transform="translate(${offset.x} 0)"` : "";
+      const visualStart = Math.max(x, deadlineX - (offset.x ?? 0));
+      const latenessWidth = Math.max(0, end - visualStart);
+      return `
+        <g class="timeline-row status-${status}">
+          <line x1="${deadlineX}" y1="${y - 10}" x2="${deadlineX}" y2="${y + 26}" class="deadline-line"></line>
+          <text x="${deadlineX}" y="${y - 16}" class="axis-label" text-anchor="middle">${escapeHtml(item.id)}: d=${item.deadline}</text>
+        </g>
+        <g
+          class="timeline-row draggable-item drag-x status-${status}"
+          data-drag-item
+          data-problem-id="minimizeLateness"
+          data-item-id="${escapeHtml(item.id)}"
+          data-drag-axis="x"
+          data-min-offset="${padding - x}"
+          data-max-offset="${width - padding - end}"
+          ${translate}
+        >
+          <rect x="${x}" y="${y}" width="${Math.max(end - x, 24)}" height="24" rx="12" class="interval-bar ${scheduled ? "status-scheduled" : `status-${status}`} lateness-preview"></rect>
+          ${latenessWidth > 0 ? `<rect x="${visualStart}" y="${y}" width="${latenessWidth}" height="24" rx="12" class="lateness-bar"></rect>` : ""}
+          <text x="${(x + end) / 2}" y="${y + 16}" class="bar-label" text-anchor="middle">${escapeHtml(item.id)}</text>
+        </g>
+      `;
+    })
+    .join("");
 
-  return `
-    <div class="legend-row">
-      <span class="legend-item"><i class="swatch status-scheduled"></i>${t("status_scheduled")}</span>
-      <span class="legend-item"><i class="swatch lateness-swatch"></i>${t("legend_lateness")}</span>
-      <span class="legend-item"><i class="swatch deadline-swatch"></i>${t("legend_deadline")}</span>
-    </div>
-    <svg viewBox="0 0 ${width} ${height}" class="timeline-svg" aria-label="${t("view_interval")}">
-      ${buildAxis(bounds, width, height, 10)}
-      ${deadlineMarkers}
-      ${bars}
-    </svg>
-  `;
+  return renderBoardFigure(
+    "interval",
+    `
+      <div class="legend-row">
+        <span class="legend-item"><i class="swatch status-scheduled"></i>${t("status_scheduled")}</span>
+        <span class="legend-item"><i class="swatch lateness-swatch"></i>${t("legend_lateness")}</span>
+        <span class="legend-item"><i class="swatch deadline-swatch"></i>${t("legend_deadline")}</span>
+      </div>
+    `,
+    `
+      <svg viewBox="0 0 ${width} ${height}" class="timeline-svg" data-board-svg aria-label="${t("view_interval")}">
+        ${buildAxis(bounds, width, height, 10)}
+        ${bars}
+      </svg>
+    `,
+    boardState,
+    t,
+    t("board_hint_drag_horizontal"),
+  );
 }
 
-function renderIntervalView(problemId, simulation, step, t) {
+function renderIntervalView(problemId, simulation, step, t, boardState) {
   if (problemId === "intervalScheduling") {
-    return renderIntervalSchedulingSvg(simulation, step, t);
+    return renderIntervalSchedulingSvg(simulation, step, t, boardState);
   }
   if (problemId === "intervalPartitioning") {
-    return renderPartitioningSvg(simulation, step, t);
+    return renderPartitioningSvg(simulation, step, t, boardState);
   }
-  return renderLatenessSvg(simulation, step, t);
+  return renderLatenessSvg(simulation, step, t, boardState);
 }
 
-function renderConflictGraph(problemId, simulation, step, t) {
+function renderConflictGraph(problemId, simulation, step, t, boardState) {
   if (problemId === "minimizeLateness") {
-    return renderInversionGraph(simulation, step, t);
+    return renderInversionGraph(simulation, step, t, boardState);
   }
 
   const width = 820;
@@ -566,37 +586,44 @@ function renderConflictGraph(problemId, simulation, step, t) {
         <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
       `;
 
-  return `
-    <div class="legend-row">
-      ${legendMarkup}
-    </div>
-    <svg viewBox="0 0 ${width} ${height}" class="graph-svg" aria-label="${t("view_graph")}">
-      ${edges
-        .map((edge) => {
-          const from = nodeById.get(edge.from);
-          const to = nodeById.get(edge.to);
-          return `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" class="graph-edge"></line>`;
-        })
-        .join("")}
-      ${nodes
-        .map(
-          (node) => {
-            const roomClass = problemId === "intervalPartitioning" && node.roomId ? getRoomColorClass(node.roomId) : `status-${node.status}`;
-            const currentClass = node.status === "current" ? " graph-node-current-ring" : "";
-            return `
-            <g>
-              <circle cx="${node.x}" cy="${node.y}" r="28" class="graph-node ${roomClass}${currentClass}"></circle>
-              <text x="${node.x}" y="${node.y + 5}" text-anchor="middle" class="graph-label">${escapeHtml(node.id)}</text>
-            </g>
-          `;
-          },
-        )
-        .join("")}
-    </svg>
-  `;
+  return renderBoardFigure(
+    "graph",
+    `
+      <div class="legend-row">
+        ${legendMarkup}
+      </div>
+    `,
+    `
+      <svg viewBox="0 0 ${width} ${height}" class="graph-svg" data-board-svg aria-label="${t("view_graph")}">
+        ${edges
+          .map((edge) => {
+            const from = nodeById.get(edge.from);
+            const to = nodeById.get(edge.to);
+            return `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" class="graph-edge"></line>`;
+          })
+          .join("")}
+        ${nodes
+          .map(
+            (node) => {
+              const roomClass = problemId === "intervalPartitioning" && node.roomId ? getRoomColorClass(node.roomId) : `status-${node.status}`;
+              const currentClass = node.status === "current" ? " graph-node-current-ring" : "";
+              return `
+              <g>
+                <circle cx="${node.x}" cy="${node.y}" r="28" class="graph-node ${roomClass}${currentClass}"></circle>
+                <text x="${node.x}" y="${node.y + 5}" text-anchor="middle" class="graph-label">${escapeHtml(node.id)}</text>
+              </g>
+            `;
+            },
+          )
+          .join("")}
+      </svg>
+    `,
+    boardState,
+    t,
+  );
 }
 
-function renderInversionGraph(simulation, step, t) {
+function renderInversionGraph(simulation, step, t, boardState) {
   const width = 840;
   const height = 320;
   const schedule = step.state.scheduled ?? [];
@@ -627,28 +654,36 @@ function renderInversionGraph(simulation, step, t) {
     })
     .join("");
 
-  return `
-    <div class="legend-row">
-      <span class="legend-item"><i class="swatch inversion-swatch"></i>${t("legend_inversion_edge")}</span>
-      <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
-    </div>
-    <div class="graph-note">${t("lateness_graph_note")}</div>
-    <svg viewBox="0 0 ${width} ${height}" class="graph-svg" aria-label="${t("view_graph")}">
-      <line x1="72" y1="190" x2="${width - 72}" y2="190" class="axis-grid"></line>
-      ${arcs}
-      ${nodes
-        .map(
-          (node) => `
-            <g>
-              <circle cx="${node.x}" cy="${node.y}" r="26" class="graph-node status-${node.status}"></circle>
-              <text x="${node.x}" y="${node.y + 5}" text-anchor="middle" class="graph-label">${escapeHtml(node.id)}</text>
-              <text x="${node.x}" y="${node.y + 48}" text-anchor="middle" class="axis-label">d=${node.deadline}</text>
-            </g>
-          `,
-        )
-        .join("")}
-    </svg>
-  `;
+  return renderBoardFigure(
+    "graph",
+    `
+      <div class="legend-row">
+        <span class="legend-item"><i class="swatch inversion-swatch"></i>${t("legend_inversion_edge")}</span>
+        <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
+      </div>
+    `,
+    `
+      <svg viewBox="0 0 ${width} ${height}" class="graph-svg" data-board-svg aria-label="${t("view_graph")}">
+        <line x1="72" y1="190" x2="${width - 72}" y2="190" class="axis-grid"></line>
+        ${arcs}
+        ${nodes
+          .map(
+            (node) => `
+              <g>
+                <circle cx="${node.x}" cy="${node.y}" r="26" class="graph-node status-${node.status}"></circle>
+                <text x="${node.x}" y="${node.y + 5}" text-anchor="middle" class="graph-label">${escapeHtml(node.id)}</text>
+                <text x="${node.x}" y="${node.y + 48}" text-anchor="middle" class="axis-label">d=${node.deadline}</text>
+              </g>
+            `,
+          )
+          .join("")}
+      </svg>
+    `,
+    boardState,
+    t,
+    "",
+    t("lateness_graph_note"),
+  );
 }
 
 function renderProofView(problemId, algorithm, simulation, step, t) {
@@ -794,10 +829,14 @@ export function renderStateSummary(problemId, simulation, step, t) {
   `;
 
   if (problemId === "intervalScheduling") {
+    const thirdLabel = simulation.algorithmId === "fewest-conflicts" ? t("state_considered") : t("state_last_finish");
+    const thirdValue = simulation.algorithmId === "fewest-conflicts"
+      ? step.state.processedIds?.length ?? 0
+      : formatValue(step.state.lastFinish);
     items += `
       <div class="state-row"><span>${t("state_selected")}</span><strong>${step.state.selectedIds?.length ?? 0}</strong></div>
       <div class="state-row"><span>${t("state_rejected")}</span><strong>${step.state.rejectedIds?.length ?? 0}</strong></div>
-      <div class="state-row"><span>${t("state_last_finish")}</span><strong>${formatValue(step.state.lastFinish)}</strong></div>
+      <div class="state-row"><span>${thirdLabel}</span><strong>${thirdValue}</strong></div>
     `;
   } else if (problemId === "intervalPartitioning") {
     items += `
@@ -914,15 +953,15 @@ export function renderStepLog(steps, currentIndex, t) {
   `;
 }
 
-export function renderView(viewMode, problemId, algorithm, simulation, step, t) {
+export function renderView(viewMode, problemId, algorithm, simulation, step, t, boardState) {
   if (viewMode === "code") {
     return renderCodeView(problemId, algorithm, simulation, step, t);
   }
   if (viewMode === "interval") {
-    return renderIntervalView(problemId, simulation, step, t);
+    return renderIntervalView(problemId, simulation, step, t, boardState);
   }
   if (viewMode === "graph") {
-    return renderConflictGraph(problemId, simulation, step, t);
+    return renderConflictGraph(problemId, simulation, step, t, boardState);
   }
   return renderProofView(problemId, algorithm, simulation, step, t);
 }

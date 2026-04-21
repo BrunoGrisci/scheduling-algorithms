@@ -55,6 +55,10 @@ Ela segue os requisitos do projeto em `instructions.md` e as referências técni
 - Layout voltado para projeção em sala, com tipografia grande e estados visuais contrastantes.
 - Alternância entre **modo claro** e **modo escuro**.
 - Alternância entre **Inglês** e **Português do Brasil**.
+- Controles de **ampliar / reduzir / ajustar** no quadro didático para as visualizações de intervalos e grafo.
+- Manipulação direta nas visualizações de intervalos:
+  - arrastar intervalos verticalmente em escalonamento de intervalos e particionamento,
+  - arrastar jobs horizontalmente em atraso máximo, enquanto os marcadores de deadline permanecem fixos nos seus tempos.
 - **Modal de ajuda** e **modal de referências** dentro da própria página.
 - Totalmente no cliente, sem backend e sem framework externo.
 
@@ -134,6 +138,8 @@ Também foi usada validação no navegador para confirmar:
 - alternância de tema,
 - alternância de idioma,
 - troca de problema,
+- comportamento do zoom no quadro didático,
+- arraste de intervalos e jobs,
 - renderização da aba de provas,
 - comportamento da execução automática.
 

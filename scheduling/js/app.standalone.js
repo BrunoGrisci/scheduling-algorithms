@@ -408,26 +408,34 @@
       return JSON.parse(JSON.stringify(value));
     }
     
+    function addOperations(metrics, amount = 1) {
+      if (metrics) {
+        metrics.operations += amount;
+      }
+    }
+    
     function intervalsOverlap(first, second) {
       return first.start < second.finish && second.start < first.finish;
     }
     
-    function decorateIntervals(items) {
-      return items.map((item, index) => {
-        const duration = item.finish - item.start;
-        const conflicts = items.reduce((count, other, otherIndex) => {
-          if (index === otherIndex) {
-            return count;
-          }
-          return count + (intervalsOverlap(item, other) ? 1 : 0);
-        }, 0);
+    function decorateIntervals(items, metrics = null) {
+      const decorated = items.map((item) => ({
+        ...item,
+        duration: item.finish - item.start,
+        conflicts: 0,
+      }));
     
-        return {
-          ...item,
-          duration,
-          conflicts,
-        };
-      });
+      for (let left = 0; left < decorated.length; left += 1) {
+        for (let right = left + 1; right < decorated.length; right += 1) {
+          addOperations(metrics);
+          if (intervalsOverlap(decorated[left], decorated[right])) {
+            decorated[left].conflicts += 1;
+            decorated[right].conflicts += 1;
+          }
+        }
+      }
+    
+      return decorated;
     }
     
     function decorateJobs(items) {
@@ -450,6 +458,34 @@
       return (a, b) => a.finish - b.finish || a.start - b.start || numericIdCompare(a, b);
     }
     
+    function sortIntervalsChronologically(items) {
+      return [...items].sort((a, b) => a.start - b.start || a.finish - b.finish || numericIdCompare(a, b));
+    }
+    
+    function getChronologicalSelectionIds(selectedItems) {
+      return sortIntervalsChronologically(selectedItems).map((item) => item.id);
+    }
+    
+    function isCompatibleWithSelection(item, selectedItems, algorithmId, metrics = null) {
+      if (selectedItems.length === 0) {
+        addOperations(metrics);
+        return true;
+      }
+    
+      if (algorithmId === "fewest-conflicts") {
+        for (const selectedItem of selectedItems) {
+          addOperations(metrics);
+          if (intervalsOverlap(selectedItem, item)) {
+            return false;
+          }
+        }
+        return true;
+      }
+    
+      addOperations(metrics);
+      return selectedItems[selectedItems.length - 1].finish <= item.start;
+    }
+    
     function getLatenessComparator(algorithmId) {
       if (algorithmId === "shortest-duration") {
         return (a, b) => a.duration - b.duration || a.deadline - b.deadline || numericIdCompare(a, b);
@@ -458,6 +494,41 @@
         return (a, b) => a.slack - b.slack || a.deadline - b.deadline || a.duration - b.duration || numericIdCompare(a, b);
       }
       return (a, b) => a.deadline - b.deadline || a.duration - b.duration || numericIdCompare(a, b);
+    }
+    
+    function mergeSortWithMetrics(items, compare, metrics = null) {
+      if (items.length <= 1) {
+        return [...items];
+      }
+    
+      const middle = Math.floor(items.length / 2);
+      const left = mergeSortWithMetrics(items.slice(0, middle), compare, metrics);
+      const right = mergeSortWithMetrics(items.slice(middle), compare, metrics);
+      const merged = [];
+    
+      let leftIndex = 0;
+      let rightIndex = 0;
+      while (leftIndex < left.length && rightIndex < right.length) {
+        addOperations(metrics);
+        if (compare(left[leftIndex], right[rightIndex]) <= 0) {
+          merged.push(left[leftIndex]);
+          leftIndex += 1;
+        } else {
+          merged.push(right[rightIndex]);
+          rightIndex += 1;
+        }
+      }
+    
+      while (leftIndex < left.length) {
+        merged.push(left[leftIndex]);
+        leftIndex += 1;
+      }
+      while (rightIndex < right.length) {
+        merged.push(right[rightIndex]);
+        rightIndex += 1;
+      }
+    
+      return merged;
     }
     
     class MinHeap {
@@ -522,13 +593,14 @@
       }
     }
     
-    function makeStep(index, line, messageKey, params, state) {
+    function makeStep(index, line, messageKey, params, state, operationCount = 0) {
       return {
         index,
         line,
         messageKey,
         params,
         state: clone(state),
+        operationCount,
       };
     }
     
@@ -614,8 +686,7 @@
     }
     
     function simulateIntervalScheduling(items, algorithmId) {
-      const decorated = decorateIntervals(items);
-      const sortedItems = [...decorated].sort(getIntervalComparator(algorithmId));
+      const metrics = { operations: 0 };
       const optimal = computeIntervalSchedulingOptimal(items);
     
       const state = {
@@ -632,29 +703,39 @@
     
       const steps = [];
       let stepIndex = 0;
-      steps.push(makeStep(stepIndex++, null, "step_ready", {}, state));
+      steps.push(makeStep(stepIndex++, null, "step_ready", {}, state, metrics.operations));
+      const decorated = decorateIntervals(items, algorithmId === "fewest-conflicts" ? metrics : null);
+      const sortedItems = mergeSortWithMetrics(decorated, getIntervalComparator(algorithmId), metrics);
       state.isSorted = true;
       steps.push(
         makeStep(stepIndex++, 1, "step_sorted", { count: sortedItems.length }, {
           ...state,
           sortedIds: sortedItems.map((item) => item.id),
-        }),
+        }, metrics.operations),
       );
-      steps.push(makeStep(stepIndex++, 2, "step_initialized", {}, state));
+      addOperations(metrics);
+      steps.push(makeStep(stepIndex++, 2, "step_initialized", {}, state, metrics.operations));
     
       const selectedItems = [];
       for (let index = 0; index < sortedItems.length; index += 1) {
         const item = sortedItems[index];
         state.currentId = item.id;
         state.currentIndex = index;
-        steps.push(makeStep(stepIndex++, 3, "step_consider_interval", { id: item.id }, state));
+        addOperations(metrics);
+        steps.push(makeStep(stepIndex++, 3, "step_consider_interval", { id: item.id }, state, metrics.operations));
     
-        const compatible = selectedItems.length === 0 || selectedItems[selectedItems.length - 1].finish <= item.start;
+        const compatible = isCompatibleWithSelection(item, selectedItems, algorithmId, metrics);
         state.processedIds.push(item.id);
         if (compatible) {
           selectedItems.push(item);
-          state.selectedIds.push(item.id);
-          state.lastFinish = item.finish;
+          if (algorithmId === "fewest-conflicts") {
+            state.selectedIds = getChronologicalSelectionIds(selectedItems);
+            state.lastFinish = null;
+          } else {
+            state.selectedIds.push(item.id);
+            state.lastFinish = item.finish;
+          }
+          addOperations(metrics);
           state.objectiveValue = state.selectedIds.length;
           state.decisions.push({
             id: item.id,
@@ -662,25 +743,38 @@
             reasonKey: "reason_compatible",
           });
           steps.push(
-            makeStep(stepIndex++, 5, "step_select_interval", { id: item.id, finish: item.finish }, state),
+            makeStep(
+              stepIndex++,
+              5,
+              algorithmId === "fewest-conflicts" ? "step_select_interval_set" : "step_select_interval",
+              algorithmId === "fewest-conflicts"
+                ? { id: item.id, count: state.selectedIds.length }
+                : { id: item.id, finish: item.finish },
+              state,
+              metrics.operations,
+            ),
           );
         } else {
           state.rejectedIds.push(item.id);
+          addOperations(metrics);
           state.decisions.push({
             id: item.id,
             decision: "rejected",
             reasonKey: "reason_incompatible",
           });
-          steps.push(makeStep(stepIndex++, 6, "step_reject_interval", { id: item.id }, state));
+          steps.push(makeStep(stepIndex++, 6, "step_reject_interval", { id: item.id }, state, metrics.operations));
         }
       }
     
       state.currentId = null;
       state.currentIndex = null;
-      steps.push(makeStep(stepIndex++, null, "step_finished", {}, state));
+      steps.push(makeStep(stepIndex++, null, "step_finished", {}, state, metrics.operations));
     
-      const frontierComparison = state.selectedIds.map((id, index) => {
-        const greedyInterval = selectedItems[index];
+      const displayedSelection = algorithmId === "fewest-conflicts" ? sortIntervalsChronologically(selectedItems) : selectedItems;
+      const displayedSelectionIds = algorithmId === "fewest-conflicts" ? getChronologicalSelectionIds(selectedItems) : state.selectedIds;
+    
+      const frontierComparison = displayedSelectionIds.map((id, index) => {
+        const greedyInterval = displayedSelection[index];
         const optimalInterval = optimal.selected[index] ?? null;
         return {
           rank: index + 1,
@@ -698,11 +792,12 @@
         items: decorated,
         sortedItems,
         steps,
+        operationTotal: metrics.operations,
         result: {
-          selected: selectedItems,
-          selectedIds: state.selectedIds,
+          selected: displayedSelection,
+          selectedIds: displayedSelectionIds,
           rejectedIds: state.rejectedIds,
-          objectiveValue: state.selectedIds.length,
+          objectiveValue: displayedSelection.length,
         },
         optimal: {
           objectiveValue: optimal.count,
@@ -711,18 +806,18 @@
         proof: {
           style: "staysAhead",
           frontierComparison,
-          greedyIds: state.selectedIds,
+          greedyIds: displayedSelectionIds,
           optimalIds: optimal.selectedIds,
         },
       };
     }
     
     function runPartitioningCore(items, algorithmId, recordSteps) {
-      const decorated = decorateIntervals(items);
-      const sortedItems = [...decorated].sort(getIntervalComparator(algorithmId));
-      const depthInfo = computeDepthWithWitness(decorated);
-    
-      const roomHeap = new MinHeap((a, b) => a.finish - b.finish || a.roomId - b.roomId);
+      const metrics = { operations: 0 };
+      const roomHeap = new MinHeap((a, b) => {
+        addOperations(metrics);
+        return a.finish - b.finish || a.roomId - b.roomId;
+      });
       const rooms = [];
       const state = {
         rooms: [],
@@ -737,15 +832,21 @@
       const steps = [];
       let stepIndex = 0;
       if (recordSteps) {
-        steps.push(makeStep(stepIndex++, null, "step_ready", {}, state));
+        steps.push(makeStep(stepIndex++, null, "step_ready", {}, state, metrics.operations));
+      }
+      const decorated = decorateIntervals(items, algorithmId === "fewest-conflicts" ? metrics : null);
+      const sortedItems = mergeSortWithMetrics(decorated, getIntervalComparator(algorithmId), metrics);
+      const depthInfo = computeDepthWithWitness(decorated);
+      if (recordSteps) {
         state.isSorted = true;
         steps.push(
           makeStep(stepIndex++, 1, "step_sorted", { count: sortedItems.length }, {
             ...state,
             sortedIds: sortedItems.map((item) => item.id),
-          }),
+          }, metrics.operations),
         );
-        steps.push(makeStep(stepIndex++, 2, "step_initialized", {}, state));
+        addOperations(metrics);
+        steps.push(makeStep(stepIndex++, 2, "step_initialized", {}, state, metrics.operations));
       }
     
       let nextRoomId = 1;
@@ -755,10 +856,12 @@
         state.currentIndex = index;
     
         if (recordSteps) {
-          steps.push(makeStep(stepIndex++, 3, "step_consider_interval", { id: item.id }, state));
+          addOperations(metrics);
+          steps.push(makeStep(stepIndex++, 3, "step_consider_interval", { id: item.id }, state, metrics.operations));
         }
     
         const earliestRoom = roomHeap.peek();
+        addOperations(metrics);
         if (earliestRoom && earliestRoom.finish <= item.start) {
           const room = roomHeap.pop();
           room.finish = item.finish;
@@ -771,6 +874,7 @@
             roomId: room.roomId,
             decision: "reuse",
           });
+          addOperations(metrics);
           state.rooms = rooms.map((currentRoom) => ({
             roomId: currentRoom.roomId,
             finish: currentRoom.finish,
@@ -778,7 +882,7 @@
           }));
           if (recordSteps) {
             steps.push(
-              makeStep(stepIndex++, 5, "step_assign_existing_room", { id: item.id, roomId: room.roomId }, state),
+              makeStep(stepIndex++, 5, "step_assign_existing_room", { id: item.id, roomId: room.roomId }, state, metrics.operations),
             );
           }
         } else {
@@ -797,13 +901,14 @@
             roomId: room.roomId,
             decision: "new-room",
           });
+          addOperations(metrics);
           state.rooms = rooms.map((currentRoom) => ({
             roomId: currentRoom.roomId,
             finish: currentRoom.finish,
             items: currentRoom.items,
           }));
           if (recordSteps) {
-            steps.push(makeStep(stepIndex++, 6, "step_open_room", { id: item.id, roomId: room.roomId }, state));
+            steps.push(makeStep(stepIndex++, 6, "step_open_room", { id: item.id, roomId: room.roomId }, state, metrics.operations));
           }
         }
       }
@@ -811,7 +916,7 @@
       if (recordSteps) {
         state.currentId = null;
         state.currentIndex = null;
-        steps.push(makeStep(stepIndex++, null, "step_finished", {}, state));
+        steps.push(makeStep(stepIndex++, null, "step_finished", {}, state, metrics.operations));
       }
     
       return {
@@ -820,6 +925,7 @@
         items: decorated,
         sortedItems,
         steps,
+        operationTotal: metrics.operations,
         result: {
           rooms: rooms.map((room) => ({
             roomId: room.roomId,
@@ -845,8 +951,7 @@
     }
     
     function runLatenessCore(items, algorithmId, recordSteps) {
-      const decorated = decorateJobs(items);
-      const sortedItems = [...decorated].sort(getLatenessComparator(algorithmId));
+      const metrics = { operations: 0 };
       const state = {
         scheduled: [],
         currentId: null,
@@ -861,15 +966,20 @@
       const steps = [];
       let stepIndex = 0;
       if (recordSteps) {
-        steps.push(makeStep(stepIndex++, null, "step_ready", {}, state));
+        steps.push(makeStep(stepIndex++, null, "step_ready", {}, state, metrics.operations));
+      }
+      const decorated = decorateJobs(items);
+      const sortedItems = mergeSortWithMetrics(decorated, getLatenessComparator(algorithmId), metrics);
+      if (recordSteps) {
         state.isSorted = true;
         steps.push(
           makeStep(stepIndex++, 1, "step_sorted", { count: sortedItems.length }, {
             ...state,
             sortedIds: sortedItems.map((item) => item.id),
-          }),
+          }, metrics.operations),
         );
-        steps.push(makeStep(stepIndex++, 2, "step_initialized", {}, state));
+        addOperations(metrics, 2);
+        steps.push(makeStep(stepIndex++, 2, "step_initialized", {}, state, metrics.operations));
       }
     
       for (let index = 0; index < sortedItems.length; index += 1) {
@@ -877,7 +987,8 @@
         state.currentId = item.id;
         state.currentIndex = index;
         if (recordSteps) {
-          steps.push(makeStep(stepIndex++, 3, "step_consider_job", { id: item.id }, state));
+          addOperations(metrics);
+          steps.push(makeStep(stepIndex++, 3, "step_consider_job", { id: item.id }, state, metrics.operations));
         }
     
         const start = state.time;
@@ -900,6 +1011,7 @@
           maxLateness: state.maxLateness,
         });
     
+        addOperations(metrics, 4);
         if (recordSteps) {
           steps.push(
             makeStep(stepIndex++, 6, "step_schedule_job", {
@@ -907,7 +1019,7 @@
               start,
               finish,
               lateness,
-            }, state),
+            }, state, metrics.operations),
           );
         }
       }
@@ -915,7 +1027,7 @@
       if (recordSteps) {
         state.currentId = null;
         state.currentIndex = null;
-        steps.push(makeStep(stepIndex++, null, "step_finished", {}, state));
+        steps.push(makeStep(stepIndex++, null, "step_finished", {}, state, metrics.operations));
       }
     
       const inversionInfo = countInversionsByDeadline(state.scheduled);
@@ -925,6 +1037,7 @@
         items: decorated,
         sortedItems,
         steps,
+        operationTotal: metrics.operations,
         result: {
           schedule: state.scheduled,
           objectiveValue: state.maxLateness,
@@ -1027,7 +1140,7 @@
         stop_btn: "Stop auto run",
         complete_btn: "Run to completion",
         speed_label: "Auto speed",
-        step_counter_label: "Step counter",
+        step_counter_label: "Operation count",
         view_code: "Code",
         view_interval: "Intervals",
         view_graph: "Graph",
@@ -1038,6 +1151,13 @@
         view_title_proof: "Correctness proof view",
         view_kicker: "Visualization",
         board_caption: "Teaching board",
+        zoom_controls_label: "Zoom controls",
+        zoom_in_label: "Zoom in",
+        zoom_out_label: "Zoom out",
+        zoom_reset_label: "Reset zoom to fit",
+        zoom_fit_btn: "Fit",
+        board_hint_drag_vertical: "Drag intervals up or down to reorganize the picture.",
+        board_hint_drag_horizontal: "Drag jobs left or right while the deadline markers stay fixed.",
         details_kicker: "Supporting panels",
         details_title: "Execution details",
         details_summary: "Overview",
@@ -1094,8 +1214,8 @@
         proof_stays_ahead: "Proof style: stays ahead",
         proof_structural_bound: "Proof style: structural bound",
         proof_exchange_argument: "Proof style: exchange argument",
-        source_refs_intervalos_py: "Source: refs/intervalos.py",
-        source_refs_aulas_tex: "Source: refs/aulas1718.tex",
+        source_refs_intervalos_py: "Source: Python reference implementation",
+        source_refs_aulas_tex: "Source: lecture slides",
         source_curated: "Source: curated classroom counterexample",
         source_generated: "Source: generated in the browser",
         preset_sched_refs_a: "Reference example A",
@@ -1162,6 +1282,7 @@
         state_selected: "Selected intervals",
         state_rejected: "Rejected intervals",
         state_last_finish: "Last finish time",
+        state_considered: "Considered intervals",
         state_rooms_open: "Open rooms",
         state_assigned: "Assigned intervals",
         state_depth_bound: "Depth lower bound",
@@ -1179,7 +1300,7 @@
         empty_rooms: "No rooms opened yet.",
         empty_schedule: "No jobs scheduled yet.",
         room_label: "Room {room}",
-        partition_preview_label: "Sorted input",
+        partition_preview_label: "Unassigned intervals",
         partition_rooms_label: "Open rooms",
         partition_rooms_empty: "Rooms appear here as intervals are assigned.",
         legend_room_assignment: "Assigned rooms",
@@ -1214,6 +1335,7 @@
         step_initialized: "Initialized the greedy state.",
         step_consider_interval: "Considering interval {id}.",
         step_select_interval: "Selected interval {id}; the frontier now ends at {finish}.",
+        step_select_interval_set: "Selected interval {id}; the current solution now has {count} interval(s).",
         step_reject_interval: "Rejected interval {id} because it conflicts with the current solution.",
         step_assign_existing_room: "Assigned interval {id} to room {roomId}.",
         step_open_room: "Opened room {roomId} for interval {id}.",
@@ -1262,7 +1384,7 @@
         banner_random_loaded: "Generated a random instance.",
         banner_csv_loaded: "Loaded instance from CSV.",
         banner_csv_error: "Could not load CSV: {reason}",
-        banner_reset: "Reset the execution to the first step.",
+        banner_reset: "Reset the execution to the beginning.",
         banner_autorun_started: "Automatic execution started.",
         banner_autorun_stopped: "Automatic execution stopped.",
         banner_done: "The execution is already at the final state.",
@@ -1290,7 +1412,7 @@
         stop_btn: "Parar execução automática",
         complete_btn: "Executar até o final",
         speed_label: "Velocidade automática",
-        step_counter_label: "Contador de passos",
+        step_counter_label: "Contador de operacoes",
         view_code: "Código",
         view_interval: "Intervalos",
         view_graph: "Grafo",
@@ -1301,6 +1423,13 @@
         view_title_proof: "Visualização da prova de corretude",
         view_kicker: "Visualização",
         board_caption: "Quadro didático",
+        zoom_controls_label: "Controles de zoom",
+        zoom_in_label: "Ampliar",
+        zoom_out_label: "Reduzir",
+        zoom_reset_label: "Redefinir o zoom para caber",
+        zoom_fit_btn: "Ajustar",
+        board_hint_drag_vertical: "Arraste os intervalos para cima ou para baixo para reorganizar o desenho.",
+        board_hint_drag_horizontal: "Arraste os jobs para a esquerda ou para a direita enquanto os marcadores de deadline permanecem fixos.",
         details_kicker: "Painéis de apoio",
         details_title: "Detalhes da execução",
         details_summary: "Visão geral",
@@ -1357,8 +1486,8 @@
         proof_stays_ahead: "Estilo da prova: fica à frente",
         proof_structural_bound: "Estilo da prova: limite estrutural",
         proof_exchange_argument: "Estilo da prova: argumento da troca",
-        source_refs_intervalos_py: "Fonte: refs/intervalos.py",
-        source_refs_aulas_tex: "Fonte: refs/aulas1718.tex",
+        source_refs_intervalos_py: "Fonte: implementação de referência em Python",
+        source_refs_aulas_tex: "Fonte: slides da disciplina",
         source_curated: "Fonte: contraexemplo didático curado",
         source_generated: "Fonte: gerada no navegador",
         preset_sched_refs_a: "Exemplo de referência A",
@@ -1425,6 +1554,7 @@
         state_selected: "Intervalos selecionados",
         state_rejected: "Intervalos rejeitados",
         state_last_finish: "Último tempo final",
+        state_considered: "Intervalos considerados",
         state_rooms_open: "Salas abertas",
         state_assigned: "Intervalos alocados",
         state_depth_bound: "Limite inferior pela profundidade",
@@ -1442,7 +1572,7 @@
         empty_rooms: "Nenhuma sala aberta ainda.",
         empty_schedule: "Nenhuma tarefa escalonada ainda.",
         room_label: "Sala {room}",
-        partition_preview_label: "Entrada ordenada",
+        partition_preview_label: "Intervalos não atribuídos",
         partition_rooms_label: "Salas abertas",
         partition_rooms_empty: "As salas aparecem aqui conforme os intervalos são atribuídos.",
         legend_room_assignment: "Salas atribuídas",
@@ -1477,6 +1607,7 @@
         step_initialized: "Estado guloso inicializado.",
         step_consider_interval: "Considerando o intervalo {id}.",
         step_select_interval: "Intervalo {id} selecionado; a fronteira agora termina em {finish}.",
+        step_select_interval_set: "Intervalo {id} selecionado; a solução atual agora tem {count} intervalo(s).",
         step_reject_interval: "Intervalo {id} rejeitado porque conflita com a solução atual.",
         step_assign_existing_room: "Intervalo {id} atribuído à sala {roomId}.",
         step_open_room: "Sala {roomId} aberta para o intervalo {id}.",
@@ -1525,7 +1656,7 @@
         banner_random_loaded: "Instância aleatória gerada.",
         banner_csv_loaded: "Instância carregada do CSV.",
         banner_csv_error: "Não foi possível carregar o CSV: {reason}",
-        banner_reset: "Execução reiniciada para o primeiro passo.",
+        banner_reset: "Execução reiniciada para o inicio.",
         banner_autorun_started: "Execução automática iniciada.",
         banner_autorun_stopped: "Execução automática interrompida.",
         banner_done: "A execução já está no estado final.",
@@ -1595,10 +1726,10 @@
           <p><strong>Principais referências</strong></p>
           <ol>
             <li><em>Algorithm Design</em>, Jon Kleinberg e Éva Tardos, Capítulo 4.</li>
-            <li><code>refs/aulas1718.tex</code>, slides de Projeto e Análise de Algoritmos I.</li>
-            <li><code>refs/intervalos.py</code>, implementações em Python dos algoritmos sobre intervalos.</li>
-            <li><code>refs/04DemoEarliestFinishTimeFirst.pdf</code>, demonstração da estratégia que termina mais cedo.</li>
-            <li><code>refs/04DemoEarliestStartTimeFirst.pdf</code>, demonstração da estratégia que inicia mais cedo.</li>
+            <li>Slides de Projeto e Análise de Algoritmos I.</li>
+            <li>Implementações de referência em Python para os algoritmos de intervalos.</li>
+            <li>Demonstração da estratégia que termina mais cedo.</li>
+            <li>Demonstração da estratégia que inicia mais cedo.</li>
           </ol>
           <p><strong>Observações</strong></p>
           <ul>
@@ -1615,10 +1746,10 @@
         <p><strong>Main references</strong></p>
         <ol>
           <li><em>Algorithm Design</em>, Jon Kleinberg and Éva Tardos, Chapter 4.</li>
-          <li><code>refs/aulas1718.tex</code>, lecture slides for Projeto e Análise de Algoritmos I.</li>
-          <li><code>refs/intervalos.py</code>, Python implementations of the interval algorithms.</li>
-          <li><code>refs/04DemoEarliestFinishTimeFirst.pdf</code>, demo of the earliest-finish-time-first strategy.</li>
-          <li><code>refs/04DemoEarliestStartTimeFirst.pdf</code>, demo of the earliest-start-time-first strategy.</li>
+          <li>Lecture slides for Projeto e Análise de Algoritmos I.</li>
+          <li>Python reference implementations of the interval algorithms.</li>
+          <li>Demo of the earliest-finish-time-first strategy.</li>
+          <li>Demo of the earliest-start-time-first strategy.</li>
         </ol>
         <p><strong>Notes</strong></p>
         <ul>
@@ -1790,6 +1921,38 @@
       return padding + ((value - bounds.min) / (bounds.max - bounds.min)) * (width - padding * 2);
     }
     
+    function getBoardZoom(boardState, viewMode) {
+      return boardState?.zoom?.[viewMode] ?? 1;
+    }
+    
+    function getBoardOffset(boardState, problemId, itemId) {
+      return boardState?.offsets?.[problemId]?.[itemId] ?? { x: 0, y: 0 };
+    }
+    
+    function renderBoardFigure(viewMode, legendMarkup, svgMarkup, boardState, t, hint = "", note = "") {
+      const zoom = Math.round(getBoardZoom(boardState, viewMode) * 100);
+      return `
+        <div class="board-figure" data-board-figure="${viewMode}">
+          <div class="board-tools">
+            <div class="board-tools-copy">
+              ${legendMarkup}
+              ${hint ? `<p class="board-hint">${hint}</p>` : ""}
+              ${note ? `<p class="board-note">${note}</p>` : ""}
+            </div>
+            <div class="zoom-panel" role="group" aria-label="${t("zoom_controls_label")}">
+              <button type="button" class="zoom-btn secondary" data-zoom-action="out" aria-label="${t("zoom_out_label")}">−</button>
+              <output class="zoom-readout" data-zoom-readout>${zoom}%</output>
+              <button type="button" class="zoom-btn secondary" data-zoom-action="in" aria-label="${t("zoom_in_label")}">+</button>
+              <button type="button" class="zoom-fit-btn secondary" data-zoom-action="reset" aria-label="${t("zoom_reset_label")}">${t("zoom_fit_btn")}</button>
+            </div>
+          </div>
+          <div class="board-stage" data-board-stage>
+            ${svgMarkup}
+          </div>
+        </div>
+      `;
+    }
+    
     function buildAxis(bounds, width, height, tickCount = 8) {
       const padding = 52;
       const ticks = [];
@@ -1806,11 +1969,15 @@
     
     function renderDataChips(problemId, simulation, stepState, t) {
       if (problemId === "intervalScheduling") {
+        const thirdLabel = simulation.algorithmId === "fewest-conflicts" ? t("state_considered") : t("state_last_finish");
+        const thirdValue = simulation.algorithmId === "fewest-conflicts"
+          ? stepState.processedIds?.length ?? 0
+          : formatValue(stepState.lastFinish);
         return `
           <div class="chip-grid">
             <div class="data-chip"><span>${t("state_selected")}</span><strong>${stepState.selectedIds?.length ?? 0}</strong></div>
             <div class="data-chip"><span>${t("state_rejected")}</span><strong>${stepState.rejectedIds?.length ?? 0}</strong></div>
-            <div class="data-chip"><span>${t("state_last_finish")}</span><strong>${formatValue(stepState.lastFinish)}</strong></div>
+            <div class="data-chip"><span>${thirdLabel}</span><strong>${thirdValue}</strong></div>
           </div>
         `;
       }
@@ -1956,9 +2123,9 @@
       `;
     }
     
-    function renderIntervalSchedulingSvg(simulation, step, t) {
+    function renderIntervalSchedulingSvg(simulation, step, t, boardState) {
       const width = 900;
-      const rowHeight = 58;
+      const rowHeight = 56;
       const padding = 52;
       const bounds = buildTimelineBounds("intervalScheduling", simulation, step.state);
       const rows = [...simulation.items].sort((a, b) => a.start - b.start || a.finish - b.finish || a.id.localeCompare(b.id));
@@ -1966,12 +2133,23 @@
       const bars = rows
         .map((item, index) => {
           const status = getStatusForItem("intervalScheduling", item.id, step.state);
+          const offset = getBoardOffset(boardState, "intervalScheduling", item.id);
           const x = xScale(item.start, bounds, width, padding);
           const end = xScale(item.finish, bounds, width, padding);
           const y = 36 + index * rowHeight;
           const label = end - x >= 26 ? escapeHtml(item.id) : "";
+          const translate = offset.y ? ` transform="translate(0 ${offset.y})"` : "";
           return `
-            <g class="timeline-row status-${status}">
+            <g
+              class="timeline-row status-${status} draggable-item drag-y"
+              data-drag-item
+              data-problem-id="intervalScheduling"
+              data-item-id="${escapeHtml(item.id)}"
+              data-drag-axis="y"
+              data-min-offset="${28 - y}"
+              data-max-offset="${height - 58 - y}"
+              ${translate}
+            >
               <text x="14" y="${y + 18}" class="row-label">${escapeHtml(item.id)}</text>
               <rect x="${x}" y="${y}" width="${Math.max(end - x, 16)}" height="22" rx="10" class="interval-bar status-${status}"></rect>
               ${label ? `<text x="${(x + end) / 2}" y="${y + 15}" class="bar-label" text-anchor="middle">${label}</text>` : ""}
@@ -1980,194 +2158,167 @@
         })
         .join("");
     
-      return `
-        <div class="legend-row">
-          <span class="legend-item"><i class="swatch status-selected"></i>${t("status_selected")}</span>
-          <span class="legend-item"><i class="swatch status-rejected"></i>${t("status_rejected")}</span>
-          <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
-        </div>
-        <svg viewBox="0 0 ${width} ${height}" class="timeline-svg" aria-label="${t("view_interval")}">
-          ${buildAxis(bounds, width, height)}
-          ${bars}
-        </svg>
-      `;
+      return renderBoardFigure(
+        "interval",
+        `
+          <div class="legend-row">
+            <span class="legend-item"><i class="swatch status-selected"></i>${t("status_selected")}</span>
+            <span class="legend-item"><i class="swatch status-rejected"></i>${t("status_rejected")}</span>
+            <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
+          </div>
+        `,
+        `
+          <svg viewBox="0 0 ${width} ${height}" class="timeline-svg" data-board-svg aria-label="${t("view_interval")}">
+            ${buildAxis(bounds, width, height)}
+            ${bars}
+          </svg>
+        `,
+        boardState,
+        t,
+        t("board_hint_drag_vertical"),
+      );
     }
     
-    function renderPartitioningSvg(simulation, step, t) {
+    function renderPartitioningSvg(simulation, step, t, boardState) {
       const width = 900;
       const displayItems = getDisplayItems(simulation, step.state);
-      const rooms = step.state.rooms ?? [];
-      const assignedIds = new Set(step.state.assignedIds ?? []);
-      const previewRowHeight = 44;
-      const roomRowHeight = 64;
       const bounds = buildTimelineBounds("intervalPartitioning", simulation, step.state);
+      const rowHeight = 58;
       const padding = 52;
-      const previewTop = 42;
-      const previewHeight = Math.max(displayItems.length, 1) * previewRowHeight;
-      const roomTop = previewTop + previewHeight + 52;
-      const roomCount = Math.max(rooms.length, 1);
-      const height = roomTop + roomCount * roomRowHeight + 54;
+      const height = Math.max(220, displayItems.length * rowHeight + 84);
+      const roomAssignments = getRoomAssignmentMap(step.state.rooms);
     
-      const previewLayers = displayItems
-        .map((item, itemIndex) => {
-          const y = previewTop + itemIndex * previewRowHeight;
+      const bars = displayItems
+        .map((item, index) => {
+          const offset = getBoardOffset(boardState, "intervalPartitioning", item.id);
           const x = xScale(item.start, bounds, width, padding);
           const end = xScale(item.finish, bounds, width, padding);
+          const y = 36 + index * rowHeight;
           const label = end - x >= 26 ? escapeHtml(item.id) : "";
-          const isAssigned = assignedIds.has(item.id);
-          const ghostClass = isAssigned ? " partition-ghost" : "";
-          const currentClass = item.id === step.state.currentId && !isAssigned ? " room-current" : "";
+          const roomId = roomAssignments.get(item.id);
+          const fillClass = roomId ? getRoomColorClass(roomId) : "partition-preview";
+          const currentClass = item.id === step.state.currentId ? " room-current" : "";
+          const translate = offset.y ? ` transform="translate(0 ${offset.y})"` : "";
           return `
-            <g class="partition-preview-row">
-              <text x="12" y="${y + 18}" class="row-label">${escapeHtml(item.id)}</text>
-              <rect x="${x}" y="${y}" width="${Math.max(end - x, 18)}" height="24" rx="12" class="interval-bar partition-preview${ghostClass}${currentClass}"></rect>
+            <g
+              class="timeline-row draggable-item drag-y"
+              data-drag-item
+              data-problem-id="intervalPartitioning"
+              data-item-id="${escapeHtml(item.id)}"
+              data-drag-axis="y"
+              data-min-offset="${28 - y}"
+              data-max-offset="${height - 58 - y}"
+              ${translate}
+            >
+              <text x="14" y="${y + 18}" class="row-label">${escapeHtml(item.id)}</text>
+              <rect x="${x}" y="${y}" width="${Math.max(end - x, 18)}" height="24" rx="12" class="interval-bar ${fillClass}${currentClass}"></rect>
               ${label ? `<text x="${(x + end) / 2}" y="${y + 16}" class="bar-label" text-anchor="middle">${label}</text>` : ""}
             </g>
           `;
         })
         .join("");
     
-      const roomLayers =
-        rooms.length === 0
-          ? `<text x="12" y="${roomTop + 20}" class="partition-placeholder">${t("partition_rooms_empty")}</text>`
-          : rooms
-              .map((room, roomIndex) => {
-                const y = roomTop + roomIndex * roomRowHeight;
-                const roomColorClass = getRoomColorClass(room.roomId);
-                const bars = room.items
-                  .map((item) => {
-                    const x = xScale(item.start, bounds, width, padding);
-                    const end = xScale(item.finish, bounds, width, padding);
-                    const label = end - x >= 26 ? escapeHtml(item.id) : "";
-                    const currentClass = item.id === step.state.currentId ? " room-current" : "";
-                    return `
-                      <g>
-                        <rect x="${x}" y="${y}" width="${Math.max(end - x, 18)}" height="24" rx="12" class="interval-bar ${roomColorClass}${currentClass}"></rect>
-                        ${label ? `<text x="${(x + end) / 2}" y="${y + 16}" class="bar-label" text-anchor="middle">${label}</text>` : ""}
-                      </g>
-                    `;
-                  })
-                  .join("");
-                return `
-                  <g class="room-lane">
-                    <text x="12" y="${y + 18}" class="row-label">${t("room_label", { room: room.roomId })}</text>
-                    ${bars}
-                  </g>
-                `;
-              })
-              .join("");
-    
-      return `
-        <div class="legend-row">
-          <span class="legend-item"><i class="swatch partition-preview-swatch"></i>${t("partition_preview_label")}</span>
-          <span class="legend-item"><i class="swatch room-color-1"></i>${t("legend_room_assignment")}</span>
-          <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
-        </div>
-        <svg viewBox="0 0 ${width} ${height}" class="timeline-svg" aria-label="${t("view_interval")}">
-          ${buildAxis(bounds, width, height)}
-          <text x="12" y="24" class="partition-section-label">${t("partition_preview_label")}</text>
-          ${previewLayers}
-          <line x1="12" y1="${roomTop - 18}" x2="${width - 12}" y2="${roomTop - 18}" class="partition-divider"></line>
-          <text x="12" y="${roomTop - 28}" class="partition-section-label">${t("partition_rooms_label")}</text>
-          ${roomLayers}
-        </svg>
-      `;
+      return renderBoardFigure(
+        "interval",
+        `
+          <div class="legend-row">
+            <span class="legend-item"><i class="swatch partition-preview-swatch"></i>${t("partition_preview_label")}</span>
+            <span class="legend-item"><i class="swatch room-color-1"></i>${t("legend_room_assignment")}</span>
+            <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
+          </div>
+        `,
+        `
+          <svg viewBox="0 0 ${width} ${height}" class="timeline-svg" data-board-svg aria-label="${t("view_interval")}">
+            ${buildAxis(bounds, width, height)}
+            ${bars}
+          </svg>
+        `,
+        boardState,
+        t,
+        t("board_hint_drag_vertical"),
+      );
     }
     
-    function renderLatenessSvg(simulation, step, t) {
+    function renderLatenessSvg(simulation, step, t, boardState) {
       const width = 920;
-      const pendingItems = getDisplayItems(simulation, step.state);
-      const schedule = step.state.scheduled ?? [];
-      const showPreview = schedule.length === 0;
-      const previewRowHeight = 52;
-      const height = showPreview ? Math.max(220, 90 + pendingItems.length * previewRowHeight) : 220;
+      const displayItems = getDisplayItems(simulation, step.state);
+      const scheduleMap = new Map((step.state.scheduled ?? []).map((item) => [item.id, item]));
+      const rowHeight = 58;
+      const height = Math.max(220, 84 + displayItems.length * rowHeight);
       const bounds = buildTimelineBounds("minimizeLateness", simulation, step.state);
       const padding = 52;
-      const deadlineMarkers = showPreview
-        ? pendingItems
-            .map((item, index) => {
-              const x = xScale(item.deadline, bounds, width, padding);
-              const y = 54 + index * previewRowHeight;
-              return `
-                <g>
-                  <line x1="${x}" y1="${y - 8}" x2="${x}" y2="${y + 22}" class="deadline-line"></line>
-                  <text x="${x}" y="${y - 14}" class="axis-label" text-anchor="middle">d=${item.deadline}</text>
-                </g>
-              `;
-            })
-            .join("")
-        : simulation.items
-            .map((item) => {
-              const x = xScale(item.deadline, bounds, width, padding);
-              return `
-                <g>
-                  <line x1="${x}" y1="30" x2="${x}" y2="164" class="deadline-line"></line>
-                  <text x="${x}" y="20" class="axis-label" text-anchor="middle">${escapeHtml(item.id)}: d=${item.deadline}</text>
-                </g>
-              `;
-            })
-            .join("");
     
-      const bars = showPreview
-        ? pendingItems
-            .map((item, index) => {
-              const x = xScale(0, bounds, width, padding);
-              const end = xScale(item.duration, bounds, width, padding);
-              const y = 54 + index * previewRowHeight;
-              const status = getStatusForItem("minimizeLateness", item.id, step.state);
-              const label = end - x >= 26 ? escapeHtml(item.id) : "";
-              return `
-                <g>
-                  <text x="12" y="${y + 16}" class="row-label">${escapeHtml(item.id)}</text>
-                  <rect x="${x}" y="${y}" width="${Math.max(end - x, 24)}" height="24" rx="12" class="interval-bar status-${status} lateness-preview"></rect>
-                  ${label ? `<text x="${(x + end) / 2}" y="${y + 16}" class="bar-label" text-anchor="middle">${label}</text>` : ""}
-                </g>
-              `;
-            })
-            .join("")
-        : schedule
-            .map((item) => {
-              const x = xScale(item.start, bounds, width, padding);
-              const end = xScale(item.finish, bounds, width, padding);
-              const deadlineX = xScale(item.deadline, bounds, width, padding);
-              const latenessWidth = item.finish > item.deadline ? end - deadlineX : 0;
-              return `
-                <g class="${item.id === step.state.currentId ? "current-job" : ""}">
-                  <rect x="${x}" y="78" width="${Math.max(end - x, 24)}" height="32" rx="16" class="interval-bar status-scheduled"></rect>
-                  ${latenessWidth > 0 ? `<rect x="${deadlineX}" y="78" width="${latenessWidth}" height="32" rx="16" class="lateness-bar"></rect>` : ""}
-                  <text x="${(x + end) / 2}" y="99" class="bar-label" text-anchor="middle">${escapeHtml(item.id)}</text>
-                </g>
-              `;
-            })
-            .join("");
+      const bars = displayItems
+        .map((item, index) => {
+          const scheduled = scheduleMap.get(item.id);
+          const status = getStatusForItem("minimizeLateness", item.id, step.state);
+          const start = scheduled ? scheduled.start : 0;
+          const finish = scheduled ? scheduled.finish : item.duration;
+          const x = xScale(start, bounds, width, padding);
+          const end = xScale(finish, bounds, width, padding);
+          const deadlineX = xScale(item.deadline, bounds, width, padding);
+          const y = 36 + index * rowHeight;
+          const offset = getBoardOffset(boardState, "minimizeLateness", item.id);
+          const translate = offset.x ? ` transform="translate(${offset.x} 0)"` : "";
+          const visualStart = Math.max(x, deadlineX - (offset.x ?? 0));
+          const latenessWidth = Math.max(0, end - visualStart);
+          return `
+            <g class="timeline-row status-${status}">
+              <line x1="${deadlineX}" y1="${y - 10}" x2="${deadlineX}" y2="${y + 26}" class="deadline-line"></line>
+              <text x="${deadlineX}" y="${y - 16}" class="axis-label" text-anchor="middle">${escapeHtml(item.id)}: d=${item.deadline}</text>
+            </g>
+            <g
+              class="timeline-row draggable-item drag-x status-${status}"
+              data-drag-item
+              data-problem-id="minimizeLateness"
+              data-item-id="${escapeHtml(item.id)}"
+              data-drag-axis="x"
+              data-min-offset="${padding - x}"
+              data-max-offset="${width - padding - end}"
+              ${translate}
+            >
+              <rect x="${x}" y="${y}" width="${Math.max(end - x, 24)}" height="24" rx="12" class="interval-bar ${scheduled ? "status-scheduled" : `status-${status}`} lateness-preview"></rect>
+              ${latenessWidth > 0 ? `<rect x="${visualStart}" y="${y}" width="${latenessWidth}" height="24" rx="12" class="lateness-bar"></rect>` : ""}
+              <text x="${(x + end) / 2}" y="${y + 16}" class="bar-label" text-anchor="middle">${escapeHtml(item.id)}</text>
+            </g>
+          `;
+        })
+        .join("");
     
-      return `
-        <div class="legend-row">
-          <span class="legend-item"><i class="swatch status-scheduled"></i>${t("status_scheduled")}</span>
-          <span class="legend-item"><i class="swatch lateness-swatch"></i>${t("legend_lateness")}</span>
-          <span class="legend-item"><i class="swatch deadline-swatch"></i>${t("legend_deadline")}</span>
-        </div>
-        <svg viewBox="0 0 ${width} ${height}" class="timeline-svg" aria-label="${t("view_interval")}">
-          ${buildAxis(bounds, width, height, 10)}
-          ${deadlineMarkers}
-          ${bars}
-        </svg>
-      `;
+      return renderBoardFigure(
+        "interval",
+        `
+          <div class="legend-row">
+            <span class="legend-item"><i class="swatch status-scheduled"></i>${t("status_scheduled")}</span>
+            <span class="legend-item"><i class="swatch lateness-swatch"></i>${t("legend_lateness")}</span>
+            <span class="legend-item"><i class="swatch deadline-swatch"></i>${t("legend_deadline")}</span>
+          </div>
+        `,
+        `
+          <svg viewBox="0 0 ${width} ${height}" class="timeline-svg" data-board-svg aria-label="${t("view_interval")}">
+            ${buildAxis(bounds, width, height, 10)}
+            ${bars}
+          </svg>
+        `,
+        boardState,
+        t,
+        t("board_hint_drag_horizontal"),
+      );
     }
     
-    function renderIntervalView(problemId, simulation, step, t) {
+    function renderIntervalView(problemId, simulation, step, t, boardState) {
       if (problemId === "intervalScheduling") {
-        return renderIntervalSchedulingSvg(simulation, step, t);
+        return renderIntervalSchedulingSvg(simulation, step, t, boardState);
       }
       if (problemId === "intervalPartitioning") {
-        return renderPartitioningSvg(simulation, step, t);
+        return renderPartitioningSvg(simulation, step, t, boardState);
       }
-      return renderLatenessSvg(simulation, step, t);
+      return renderLatenessSvg(simulation, step, t, boardState);
     }
     
-    function renderConflictGraph(problemId, simulation, step, t) {
+    function renderConflictGraph(problemId, simulation, step, t, boardState) {
       if (problemId === "minimizeLateness") {
-        return renderInversionGraph(simulation, step, t);
+        return renderInversionGraph(simulation, step, t, boardState);
       }
     
       const width = 820;
@@ -2200,37 +2351,44 @@
             <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
           `;
     
-      return `
-        <div class="legend-row">
-          ${legendMarkup}
-        </div>
-        <svg viewBox="0 0 ${width} ${height}" class="graph-svg" aria-label="${t("view_graph")}">
-          ${edges
-            .map((edge) => {
-              const from = nodeById.get(edge.from);
-              const to = nodeById.get(edge.to);
-              return `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" class="graph-edge"></line>`;
-            })
-            .join("")}
-          ${nodes
-            .map(
-              (node) => {
-                const roomClass = problemId === "intervalPartitioning" && node.roomId ? getRoomColorClass(node.roomId) : `status-${node.status}`;
-                const currentClass = node.status === "current" ? " graph-node-current-ring" : "";
-                return `
-                <g>
-                  <circle cx="${node.x}" cy="${node.y}" r="28" class="graph-node ${roomClass}${currentClass}"></circle>
-                  <text x="${node.x}" y="${node.y + 5}" text-anchor="middle" class="graph-label">${escapeHtml(node.id)}</text>
-                </g>
-              `;
-              },
-            )
-            .join("")}
-        </svg>
-      `;
+      return renderBoardFigure(
+        "graph",
+        `
+          <div class="legend-row">
+            ${legendMarkup}
+          </div>
+        `,
+        `
+          <svg viewBox="0 0 ${width} ${height}" class="graph-svg" data-board-svg aria-label="${t("view_graph")}">
+            ${edges
+              .map((edge) => {
+                const from = nodeById.get(edge.from);
+                const to = nodeById.get(edge.to);
+                return `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" class="graph-edge"></line>`;
+              })
+              .join("")}
+            ${nodes
+              .map(
+                (node) => {
+                  const roomClass = problemId === "intervalPartitioning" && node.roomId ? getRoomColorClass(node.roomId) : `status-${node.status}`;
+                  const currentClass = node.status === "current" ? " graph-node-current-ring" : "";
+                  return `
+                  <g>
+                    <circle cx="${node.x}" cy="${node.y}" r="28" class="graph-node ${roomClass}${currentClass}"></circle>
+                    <text x="${node.x}" y="${node.y + 5}" text-anchor="middle" class="graph-label">${escapeHtml(node.id)}</text>
+                  </g>
+                `;
+                },
+              )
+              .join("")}
+          </svg>
+        `,
+        boardState,
+        t,
+      );
     }
     
-    function renderInversionGraph(simulation, step, t) {
+    function renderInversionGraph(simulation, step, t, boardState) {
       const width = 840;
       const height = 320;
       const schedule = step.state.scheduled ?? [];
@@ -2261,28 +2419,36 @@
         })
         .join("");
     
-      return `
-        <div class="legend-row">
-          <span class="legend-item"><i class="swatch inversion-swatch"></i>${t("legend_inversion_edge")}</span>
-          <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
-        </div>
-        <div class="graph-note">${t("lateness_graph_note")}</div>
-        <svg viewBox="0 0 ${width} ${height}" class="graph-svg" aria-label="${t("view_graph")}">
-          <line x1="72" y1="190" x2="${width - 72}" y2="190" class="axis-grid"></line>
-          ${arcs}
-          ${nodes
-            .map(
-              (node) => `
-                <g>
-                  <circle cx="${node.x}" cy="${node.y}" r="26" class="graph-node status-${node.status}"></circle>
-                  <text x="${node.x}" y="${node.y + 5}" text-anchor="middle" class="graph-label">${escapeHtml(node.id)}</text>
-                  <text x="${node.x}" y="${node.y + 48}" text-anchor="middle" class="axis-label">d=${node.deadline}</text>
-                </g>
-              `,
-            )
-            .join("")}
-        </svg>
-      `;
+      return renderBoardFigure(
+        "graph",
+        `
+          <div class="legend-row">
+            <span class="legend-item"><i class="swatch inversion-swatch"></i>${t("legend_inversion_edge")}</span>
+            <span class="legend-item"><i class="swatch status-current"></i>${t("status_current")}</span>
+          </div>
+        `,
+        `
+          <svg viewBox="0 0 ${width} ${height}" class="graph-svg" data-board-svg aria-label="${t("view_graph")}">
+            <line x1="72" y1="190" x2="${width - 72}" y2="190" class="axis-grid"></line>
+            ${arcs}
+            ${nodes
+              .map(
+                (node) => `
+                  <g>
+                    <circle cx="${node.x}" cy="${node.y}" r="26" class="graph-node status-${node.status}"></circle>
+                    <text x="${node.x}" y="${node.y + 5}" text-anchor="middle" class="graph-label">${escapeHtml(node.id)}</text>
+                    <text x="${node.x}" y="${node.y + 48}" text-anchor="middle" class="axis-label">d=${node.deadline}</text>
+                  </g>
+                `,
+              )
+              .join("")}
+          </svg>
+        `,
+        boardState,
+        t,
+        "",
+        t("lateness_graph_note"),
+      );
     }
     
     function renderProofView(problemId, algorithm, simulation, step, t) {
@@ -2428,10 +2594,14 @@
       `;
     
       if (problemId === "intervalScheduling") {
+        const thirdLabel = simulation.algorithmId === "fewest-conflicts" ? t("state_considered") : t("state_last_finish");
+        const thirdValue = simulation.algorithmId === "fewest-conflicts"
+          ? step.state.processedIds?.length ?? 0
+          : formatValue(step.state.lastFinish);
         items += `
           <div class="state-row"><span>${t("state_selected")}</span><strong>${step.state.selectedIds?.length ?? 0}</strong></div>
           <div class="state-row"><span>${t("state_rejected")}</span><strong>${step.state.rejectedIds?.length ?? 0}</strong></div>
-          <div class="state-row"><span>${t("state_last_finish")}</span><strong>${formatValue(step.state.lastFinish)}</strong></div>
+          <div class="state-row"><span>${thirdLabel}</span><strong>${thirdValue}</strong></div>
         `;
       } else if (problemId === "intervalPartitioning") {
         items += `
@@ -2548,15 +2718,15 @@
       `;
     }
     
-    function renderView(viewMode, problemId, algorithm, simulation, step, t) {
+    function renderView(viewMode, problemId, algorithm, simulation, step, t, boardState) {
       if (viewMode === "code") {
         return renderCodeView(problemId, algorithm, simulation, step, t);
       }
       if (viewMode === "interval") {
-        return renderIntervalView(problemId, simulation, step, t);
+        return renderIntervalView(problemId, simulation, step, t, boardState);
       }
       if (viewMode === "graph") {
-        return renderConflictGraph(problemId, simulation, step, t);
+        return renderConflictGraph(problemId, simulation, step, t, boardState);
       }
       return renderProofView(problemId, algorithm, simulation, step, t);
     }
@@ -2655,6 +2825,19 @@
       autoRunHandle: null,
       autoRunning: false,
       speed: 1,
+      board: {
+        zoom: {
+          interval: 1,
+          graph: 1,
+        },
+        offsets: {
+          intervalScheduling: {},
+          intervalPartitioning: {},
+          minimizeLateness: {},
+        },
+        drag: null,
+        resizeFrame: null,
+      },
       statusKey: "banner_preset_loaded",
       statusParams: {},
     };
@@ -2750,6 +2933,146 @@
     
     function getCurrentAlgorithm() {
       return getAlgorithm(state.problemId, state.algorithmId);
+    }
+    
+    function getBoardOffset(problemId, itemId) {
+      return state.board.offsets[problemId]?.[itemId] ?? { x: 0, y: 0 };
+    }
+    
+    function resetBoardOffsets(problemId = state.problemId) {
+      state.board.offsets[problemId] = {};
+    }
+    
+    function scheduleBoardSync() {
+      if (state.board.resizeFrame) {
+        window.cancelAnimationFrame(state.board.resizeFrame);
+      }
+      state.board.resizeFrame = window.requestAnimationFrame(() => {
+        state.board.resizeFrame = null;
+        const stage = elements.viewHost.querySelector("[data-board-stage]");
+        const svg = elements.viewHost.querySelector("[data-board-svg]");
+        const zoomReadout = elements.viewHost.querySelector("[data-zoom-readout]");
+        if (!stage || !svg) {
+          return;
+        }
+    
+        const viewBox = svg.viewBox?.baseVal;
+        if (!viewBox || !stage.clientWidth || !stage.clientHeight) {
+          return;
+        }
+    
+        const fitScale = Math.min(stage.clientWidth / viewBox.width, stage.clientHeight / viewBox.height);
+        const userZoom = state.board.zoom[state.viewMode] ?? 1;
+        const appliedScale = Math.max(0.1, fitScale * userZoom);
+    
+        svg.style.width = `${viewBox.width * appliedScale}px`;
+        svg.style.height = `${viewBox.height * appliedScale}px`;
+    
+        if (zoomReadout) {
+          zoomReadout.textContent = `${Math.round(userZoom * 100)}%`;
+        }
+      });
+    }
+    
+    function updateBoardOffset(problemId, itemId, axis, value) {
+      const current = getBoardOffset(problemId, itemId);
+      state.board.offsets[problemId] = {
+        ...state.board.offsets[problemId],
+        [itemId]: {
+          x: axis === "x" ? value : current.x ?? 0,
+          y: axis === "y" ? value : current.y ?? 0,
+        },
+      };
+    }
+    
+    function setBoardZoom(nextZoom) {
+      if (!["interval", "graph"].includes(state.viewMode)) {
+        return;
+      }
+      state.board.zoom[state.viewMode] = Math.max(0.6, Math.min(2.6, nextZoom));
+      render();
+    }
+    
+    function handleBoardZoom(action) {
+      const currentZoom = state.board.zoom[state.viewMode] ?? 1;
+      if (action === "in") {
+        setBoardZoom(currentZoom + 0.2);
+        return;
+      }
+      if (action === "out") {
+        setBoardZoom(currentZoom - 0.2);
+        return;
+      }
+      if (action === "reset") {
+        setBoardZoom(1);
+      }
+    }
+    
+    function stopBoardDrag() {
+      if (!state.board.drag) {
+        return;
+      }
+      document.body.classList.remove("is-dragging-board");
+      window.removeEventListener("pointermove", onBoardPointerMove);
+      window.removeEventListener("pointerup", stopBoardDrag);
+      window.removeEventListener("pointercancel", stopBoardDrag);
+      state.board.drag = null;
+    }
+    
+    function onBoardPointerMove(event) {
+      if (!state.board.drag) {
+        return;
+      }
+    
+      const drag = state.board.drag;
+      const deltaPixels = drag.axis === "x" ? event.clientX - drag.startClient : event.clientY - drag.startClient;
+      const deltaUnits = deltaPixels * drag.unitsPerPixel;
+      const nextValue = Math.max(drag.minOffset, Math.min(drag.maxOffset, drag.startOffset + deltaUnits));
+      updateBoardOffset(drag.problemId, drag.itemId, drag.axis, nextValue);
+      render();
+    }
+    
+    function beginBoardDrag(event) {
+      const handle = event.target.closest("[data-drag-item]");
+      if (!handle || event.button !== 0) {
+        return;
+      }
+    
+      const svg = handle.closest("[data-board-svg]");
+      if (!svg) {
+        return;
+      }
+    
+      const axis = handle.dataset.dragAxis;
+      const problemId = handle.dataset.problemId;
+      const itemId = handle.dataset.itemId;
+      if (!axis || !problemId || !itemId) {
+        return;
+      }
+    
+      const svgRect = svg.getBoundingClientRect();
+      const viewBox = svg.viewBox?.baseVal;
+      if (!viewBox || !svgRect.width || !svgRect.height) {
+        return;
+      }
+    
+      const currentOffset = getBoardOffset(problemId, itemId);
+      state.board.drag = {
+        axis,
+        problemId,
+        itemId,
+        startClient: axis === "x" ? event.clientX : event.clientY,
+        startOffset: axis === "x" ? currentOffset.x ?? 0 : currentOffset.y ?? 0,
+        unitsPerPixel: axis === "x" ? viewBox.width / svgRect.width : viewBox.height / svgRect.height,
+        minOffset: Number(handle.dataset.minOffset ?? -Infinity),
+        maxOffset: Number(handle.dataset.maxOffset ?? Infinity),
+      };
+    
+      document.body.classList.add("is-dragging-board");
+      event.preventDefault();
+      window.addEventListener("pointermove", onBoardPointerMove);
+      window.addEventListener("pointerup", stopBoardDrag);
+      window.addEventListener("pointercancel", stopBoardDrag);
     }
     
     function updateStaticText() {
@@ -2893,15 +3216,18 @@
       });
       elements.autoBtn.textContent = t(state.autoRunning ? "stop_btn" : "auto_btn");
       elements.viewTitle.textContent = t(`view_title_${state.viewMode}`);
-      elements.stepCounterValue.textContent = `${state.stepIndex + 1} / ${state.simulation.steps.length}`;
+      const currentOperationCount = currentStep?.operationCount ?? state.simulation.operationTotal ?? 0;
+      const totalOperationCount = state.simulation.operationTotal ?? currentOperationCount;
+      elements.stepCounterValue.textContent = `${currentOperationCount} / ${totalOperationCount}`;
       elements.summaryCards.innerHTML = renderSummaryCards(problem, algorithm, preset, state.simulation, t);
       elements.statusBanner.textContent = t(state.statusKey, state.statusParams);
       elements.stateSummary.innerHTML = renderStateSummary(state.problemId, state.simulation, currentStep, t);
       elements.instanceTable.innerHTML = renderInstanceTable(state.problemId, state.simulation, currentStep, t);
       elements.stepLog.innerHTML = renderStepLog(state.simulation.steps, state.stepIndex, t);
-      elements.viewHost.innerHTML = renderView(state.viewMode, state.problemId, algorithm, state.simulation, currentStep, t);
+      elements.viewHost.innerHTML = renderView(state.viewMode, state.problemId, algorithm, state.simulation, currentStep, t, state.board);
       updateLiveBadge();
       initResizableHandles(document);
+      scheduleBoardSync();
     }
     
     function stopAutoRun(silent = false) {
@@ -2938,10 +3264,12 @@
     
     function switchProblem(problemId) {
       stopAutoRun(true);
+      stopBoardDrag();
       state.problemId = problemId;
       state.algorithmId = ALGORITHMS[problemId][0].id;
       state.presetId = getDefaultPresetId(problemId);
       state.items = cloneData(getPreset(problemId, state.presetId)?.items ?? []);
+      resetBoardOffsets(problemId);
       refreshSimulation(true);
       setStatus("banner_preset_loaded");
       render();
@@ -2949,6 +3277,7 @@
     
     function switchAlgorithm(algorithmId) {
       stopAutoRun(true);
+      stopBoardDrag();
       state.algorithmId = algorithmId;
       refreshSimulation(true);
       setStatus("banner_reset");
@@ -2957,8 +3286,10 @@
     
     function switchPreset(presetId) {
       stopAutoRun(true);
+      stopBoardDrag();
       state.presetId = presetId;
       state.items = cloneData(getPreset(state.problemId, presetId)?.items ?? []);
+      resetBoardOffsets();
       refreshSimulation(true);
       setStatus("banner_preset_loaded");
       render();
@@ -2966,10 +3297,12 @@
     
     function generateRandom() {
       stopAutoRun(true);
+      stopBoardDrag();
       const size = clampRandomSize(Number(elements.randomSizeInput.value));
       elements.randomSizeInput.value = String(size);
       state.presetId = "";
       state.items = buildRandomInstance(state.problemId, size);
+      resetBoardOffsets();
       refreshSimulation(true);
       setStatus("banner_random_loaded");
       render();
@@ -2981,9 +3314,11 @@
       }
       try {
         stopAutoRun(true);
+        stopBoardDrag();
         const text = await file.text();
         state.items = parseCsvText(state.problemId, text);
         state.presetId = "";
+        resetBoardOffsets();
         refreshSimulation(true);
         setStatus("banner_csv_loaded");
       } catch (error) {
@@ -3088,6 +3423,15 @@
         });
       });
     
+      elements.viewHost.addEventListener("click", (event) => {
+        const zoomAction = event.target.closest("[data-zoom-action]")?.dataset.zoomAction;
+        if (zoomAction) {
+          handleBoardZoom(zoomAction);
+        }
+      });
+    
+      elements.viewHost.addEventListener("pointerdown", beginBoardDrag);
+    
       elements.detailTabs.forEach((tab) => {
         tab.addEventListener("click", () => {
           state.detailMode = tab.dataset.detail;
@@ -3117,10 +3461,13 @@
     
       window.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
+          stopBoardDrag();
           closeModal(elements.helpOverlay);
           closeModal(elements.referencesOverlay);
         }
       });
+    
+      window.addEventListener("resize", scheduleBoardSync);
     }
     
     function init() {

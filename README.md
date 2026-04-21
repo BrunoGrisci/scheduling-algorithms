@@ -55,6 +55,10 @@ It follows the project requirements in `instructions.md` and the technical refer
 - Projector-oriented layout with large typography and high-contrast visual states.
 - **Light mode / dark mode** toggle.
 - **English / Brazilian Portuguese** toggle.
+- Teaching-board **zoom in / zoom out / fit** controls for interval and graph views.
+- Direct manipulation on interval views:
+  - drag intervals vertically in interval scheduling and interval partitioning,
+  - drag jobs horizontally in maximum lateness, while deadline markers stay fixed at their times.
 - In-page **help modal** and **references modal**.
 - Fully client-side, with no backend or external framework.
 
@@ -134,6 +138,8 @@ Browser validation was also used to confirm:
 - theme toggle,
 - language toggle,
 - problem switching,
+- teaching-board zoom behavior,
+- interval and job dragging,
 - proof tab rendering,
 - auto-run behavior.
 
@@ -199,4 +205,3 @@ If you use this tool in academic work (papers, theses, technical reports, or tea
 
 - **Projeto e Análise de Algoritmos**
   Repository: https://github.com/BrunoGrisci/projeto-e-analise-de-algoritmos
-

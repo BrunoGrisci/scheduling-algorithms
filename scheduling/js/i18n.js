@@ -19,7 +19,7 @@ const TRANSLATIONS = {
     stop_btn: "Stop auto run",
     complete_btn: "Run to completion",
     speed_label: "Auto speed",
-    step_counter_label: "Step counter",
+    step_counter_label: "Operation count",
     view_code: "Code",
     view_interval: "Intervals",
     view_graph: "Graph",
@@ -30,6 +30,13 @@ const TRANSLATIONS = {
     view_title_proof: "Correctness proof view",
     view_kicker: "Visualization",
     board_caption: "Teaching board",
+    zoom_controls_label: "Zoom controls",
+    zoom_in_label: "Zoom in",
+    zoom_out_label: "Zoom out",
+    zoom_reset_label: "Reset zoom to fit",
+    zoom_fit_btn: "Fit",
+    board_hint_drag_vertical: "Drag intervals up or down to reorganize the picture.",
+    board_hint_drag_horizontal: "Drag jobs left or right while the deadline markers stay fixed.",
     details_kicker: "Supporting panels",
     details_title: "Execution details",
     details_summary: "Overview",
@@ -86,8 +93,8 @@ const TRANSLATIONS = {
     proof_stays_ahead: "Proof style: stays ahead",
     proof_structural_bound: "Proof style: structural bound",
     proof_exchange_argument: "Proof style: exchange argument",
-    source_refs_intervalos_py: "Source: refs/intervalos.py",
-    source_refs_aulas_tex: "Source: refs/aulas1718.tex",
+    source_refs_intervalos_py: "Source: Python reference implementation",
+    source_refs_aulas_tex: "Source: lecture slides",
     source_curated: "Source: curated classroom counterexample",
     source_generated: "Source: generated in the browser",
     preset_sched_refs_a: "Reference example A",
@@ -154,6 +161,7 @@ const TRANSLATIONS = {
     state_selected: "Selected intervals",
     state_rejected: "Rejected intervals",
     state_last_finish: "Last finish time",
+    state_considered: "Considered intervals",
     state_rooms_open: "Open rooms",
     state_assigned: "Assigned intervals",
     state_depth_bound: "Depth lower bound",
@@ -171,7 +179,7 @@ const TRANSLATIONS = {
     empty_rooms: "No rooms opened yet.",
     empty_schedule: "No jobs scheduled yet.",
     room_label: "Room {room}",
-    partition_preview_label: "Sorted input",
+    partition_preview_label: "Unassigned intervals",
     partition_rooms_label: "Open rooms",
     partition_rooms_empty: "Rooms appear here as intervals are assigned.",
     legend_room_assignment: "Assigned rooms",
@@ -206,6 +214,7 @@ const TRANSLATIONS = {
     step_initialized: "Initialized the greedy state.",
     step_consider_interval: "Considering interval {id}.",
     step_select_interval: "Selected interval {id}; the frontier now ends at {finish}.",
+    step_select_interval_set: "Selected interval {id}; the current solution now has {count} interval(s).",
     step_reject_interval: "Rejected interval {id} because it conflicts with the current solution.",
     step_assign_existing_room: "Assigned interval {id} to room {roomId}.",
     step_open_room: "Opened room {roomId} for interval {id}.",
@@ -254,7 +263,7 @@ const TRANSLATIONS = {
     banner_random_loaded: "Generated a random instance.",
     banner_csv_loaded: "Loaded instance from CSV.",
     banner_csv_error: "Could not load CSV: {reason}",
-    banner_reset: "Reset the execution to the first step.",
+    banner_reset: "Reset the execution to the beginning.",
     banner_autorun_started: "Automatic execution started.",
     banner_autorun_stopped: "Automatic execution stopped.",
     banner_done: "The execution is already at the final state.",
@@ -282,7 +291,7 @@ const TRANSLATIONS = {
     stop_btn: "Parar execução automática",
     complete_btn: "Executar até o final",
     speed_label: "Velocidade automática",
-    step_counter_label: "Contador de passos",
+    step_counter_label: "Contador de operacoes",
     view_code: "Código",
     view_interval: "Intervalos",
     view_graph: "Grafo",
@@ -293,6 +302,13 @@ const TRANSLATIONS = {
     view_title_proof: "Visualização da prova de corretude",
     view_kicker: "Visualização",
     board_caption: "Quadro didático",
+    zoom_controls_label: "Controles de zoom",
+    zoom_in_label: "Ampliar",
+    zoom_out_label: "Reduzir",
+    zoom_reset_label: "Redefinir o zoom para caber",
+    zoom_fit_btn: "Ajustar",
+    board_hint_drag_vertical: "Arraste os intervalos para cima ou para baixo para reorganizar o desenho.",
+    board_hint_drag_horizontal: "Arraste os jobs para a esquerda ou para a direita enquanto os marcadores de deadline permanecem fixos.",
     details_kicker: "Painéis de apoio",
     details_title: "Detalhes da execução",
     details_summary: "Visão geral",
@@ -349,8 +365,8 @@ const TRANSLATIONS = {
     proof_stays_ahead: "Estilo da prova: fica à frente",
     proof_structural_bound: "Estilo da prova: limite estrutural",
     proof_exchange_argument: "Estilo da prova: argumento da troca",
-    source_refs_intervalos_py: "Fonte: refs/intervalos.py",
-    source_refs_aulas_tex: "Fonte: refs/aulas1718.tex",
+    source_refs_intervalos_py: "Fonte: implementação de referência em Python",
+    source_refs_aulas_tex: "Fonte: slides da disciplina",
     source_curated: "Fonte: contraexemplo didático curado",
     source_generated: "Fonte: gerada no navegador",
     preset_sched_refs_a: "Exemplo de referência A",
@@ -417,6 +433,7 @@ const TRANSLATIONS = {
     state_selected: "Intervalos selecionados",
     state_rejected: "Intervalos rejeitados",
     state_last_finish: "Último tempo final",
+    state_considered: "Intervalos considerados",
     state_rooms_open: "Salas abertas",
     state_assigned: "Intervalos alocados",
     state_depth_bound: "Limite inferior pela profundidade",
@@ -434,7 +451,7 @@ const TRANSLATIONS = {
     empty_rooms: "Nenhuma sala aberta ainda.",
     empty_schedule: "Nenhuma tarefa escalonada ainda.",
     room_label: "Sala {room}",
-    partition_preview_label: "Entrada ordenada",
+    partition_preview_label: "Intervalos não atribuídos",
     partition_rooms_label: "Salas abertas",
     partition_rooms_empty: "As salas aparecem aqui conforme os intervalos são atribuídos.",
     legend_room_assignment: "Salas atribuídas",
@@ -469,6 +486,7 @@ const TRANSLATIONS = {
     step_initialized: "Estado guloso inicializado.",
     step_consider_interval: "Considerando o intervalo {id}.",
     step_select_interval: "Intervalo {id} selecionado; a fronteira agora termina em {finish}.",
+    step_select_interval_set: "Intervalo {id} selecionado; a solução atual agora tem {count} intervalo(s).",
     step_reject_interval: "Intervalo {id} rejeitado porque conflita com a solução atual.",
     step_assign_existing_room: "Intervalo {id} atribuído à sala {roomId}.",
     step_open_room: "Sala {roomId} aberta para o intervalo {id}.",
@@ -517,7 +535,7 @@ const TRANSLATIONS = {
     banner_random_loaded: "Instância aleatória gerada.",
     banner_csv_loaded: "Instância carregada do CSV.",
     banner_csv_error: "Não foi possível carregar o CSV: {reason}",
-    banner_reset: "Execução reiniciada para o primeiro passo.",
+    banner_reset: "Execução reiniciada para o inicio.",
     banner_autorun_started: "Execução automática iniciada.",
     banner_autorun_stopped: "Execução automática interrompida.",
     banner_done: "A execução já está no estado final.",
@@ -587,10 +605,10 @@ export function getReferencesHtml(language) {
       <p><strong>Principais referências</strong></p>
       <ol>
         <li><em>Algorithm Design</em>, Jon Kleinberg e Éva Tardos, Capítulo 4.</li>
-        <li><code>refs/aulas1718.tex</code>, slides de Projeto e Análise de Algoritmos I.</li>
-        <li><code>refs/intervalos.py</code>, implementações em Python dos algoritmos sobre intervalos.</li>
-        <li><code>refs/04DemoEarliestFinishTimeFirst.pdf</code>, demonstração da estratégia que termina mais cedo.</li>
-        <li><code>refs/04DemoEarliestStartTimeFirst.pdf</code>, demonstração da estratégia que inicia mais cedo.</li>
+        <li>Slides de Projeto e Análise de Algoritmos I.</li>
+        <li>Implementações de referência em Python para os algoritmos de intervalos.</li>
+        <li>Demonstração da estratégia que termina mais cedo.</li>
+        <li>Demonstração da estratégia que inicia mais cedo.</li>
       </ol>
       <p><strong>Observações</strong></p>
       <ul>
@@ -607,10 +625,10 @@ export function getReferencesHtml(language) {
     <p><strong>Main references</strong></p>
     <ol>
       <li><em>Algorithm Design</em>, Jon Kleinberg and Éva Tardos, Chapter 4.</li>
-      <li><code>refs/aulas1718.tex</code>, lecture slides for Projeto e Análise de Algoritmos I.</li>
-      <li><code>refs/intervalos.py</code>, Python implementations of the interval algorithms.</li>
-      <li><code>refs/04DemoEarliestFinishTimeFirst.pdf</code>, demo of the earliest-finish-time-first strategy.</li>
-      <li><code>refs/04DemoEarliestStartTimeFirst.pdf</code>, demo of the earliest-start-time-first strategy.</li>
+      <li>Lecture slides for Projeto e Análise de Algoritmos I.</li>
+      <li>Python reference implementations of the interval algorithms.</li>
+      <li>Demo of the earliest-finish-time-first strategy.</li>
+      <li>Demo of the earliest-start-time-first strategy.</li>
     </ol>
     <p><strong>Notes</strong></p>
     <ul>

@@ -19,6 +19,13 @@ const schedOptimal = simulateProblem(
 assert.equal(schedOptimal.result.objectiveValue, 4);
 assert.deepEqual(schedOptimal.result.selectedIds, ["B", "C", "D", "E"]);
 
+const schedConflictCount = simulateProblem(
+  "intervalScheduling",
+  "fewest-conflicts",
+  PRESETS.intervalScheduling[0].items,
+);
+assert.ok(schedConflictCount.operationTotal > schedOptimal.operationTotal);
+
 const schedShortFail = simulateProblem(
   "intervalScheduling",
   "shortest-interval",
@@ -32,8 +39,9 @@ const schedConflictFail = simulateProblem(
   "fewest-conflicts",
   PRESETS.intervalScheduling[2].items,
 );
-assert.equal(schedConflictFail.result.objectiveValue, 2);
+assert.equal(schedConflictFail.result.objectiveValue, 3);
 assert.equal(schedConflictFail.optimal.objectiveValue, 4);
+assert.deepEqual(schedConflictFail.result.selectedIds, ["A", "F", "K"]);
 
 const partitionOptimal = simulateProblem(
   "intervalPartitioning",

@@ -6,26 +6,34 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function addOperations(metrics, amount = 1) {
+  if (metrics) {
+    metrics.operations += amount;
+  }
+}
+
 export function intervalsOverlap(first, second) {
   return first.start < second.finish && second.start < first.finish;
 }
 
-function decorateIntervals(items) {
-  return items.map((item, index) => {
-    const duration = item.finish - item.start;
-    const conflicts = items.reduce((count, other, otherIndex) => {
-      if (index === otherIndex) {
-        return count;
-      }
-      return count + (intervalsOverlap(item, other) ? 1 : 0);
-    }, 0);
+function decorateIntervals(items, metrics = null) {
+  const decorated = items.map((item) => ({
+    ...item,
+    duration: item.finish - item.start,
+    conflicts: 0,
+  }));
 
-    return {
-      ...item,
-      duration,
-      conflicts,
-    };
-  });
+  for (let left = 0; left < decorated.length; left += 1) {
+    for (let right = left + 1; right < decorated.length; right += 1) {
+      addOperations(metrics);
+      if (intervalsOverlap(decorated[left], decorated[right])) {
+        decorated[left].conflicts += 1;
+        decorated[right].conflicts += 1;
+      }
+    }
+  }
+
+  return decorated;
 }
 
 function decorateJobs(items) {
@@ -48,6 +56,34 @@ function getIntervalComparator(algorithmId) {
   return (a, b) => a.finish - b.finish || a.start - b.start || numericIdCompare(a, b);
 }
 
+function sortIntervalsChronologically(items) {
+  return [...items].sort((a, b) => a.start - b.start || a.finish - b.finish || numericIdCompare(a, b));
+}
+
+function getChronologicalSelectionIds(selectedItems) {
+  return sortIntervalsChronologically(selectedItems).map((item) => item.id);
+}
+
+function isCompatibleWithSelection(item, selectedItems, algorithmId, metrics = null) {
+  if (selectedItems.length === 0) {
+    addOperations(metrics);
+    return true;
+  }
+
+  if (algorithmId === "fewest-conflicts") {
+    for (const selectedItem of selectedItems) {
+      addOperations(metrics);
+      if (intervalsOverlap(selectedItem, item)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  addOperations(metrics);
+  return selectedItems[selectedItems.length - 1].finish <= item.start;
+}
+
 function getLatenessComparator(algorithmId) {
   if (algorithmId === "shortest-duration") {
     return (a, b) => a.duration - b.duration || a.deadline - b.deadline || numericIdCompare(a, b);
@@ -56,6 +92,41 @@ function getLatenessComparator(algorithmId) {
     return (a, b) => a.slack - b.slack || a.deadline - b.deadline || a.duration - b.duration || numericIdCompare(a, b);
   }
   return (a, b) => a.deadline - b.deadline || a.duration - b.duration || numericIdCompare(a, b);
+}
+
+function mergeSortWithMetrics(items, compare, metrics = null) {
+  if (items.length <= 1) {
+    return [...items];
+  }
+
+  const middle = Math.floor(items.length / 2);
+  const left = mergeSortWithMetrics(items.slice(0, middle), compare, metrics);
+  const right = mergeSortWithMetrics(items.slice(middle), compare, metrics);
+  const merged = [];
+
+  let leftIndex = 0;
+  let rightIndex = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    addOperations(metrics);
+    if (compare(left[leftIndex], right[rightIndex]) <= 0) {
+      merged.push(left[leftIndex]);
+      leftIndex += 1;
+    } else {
+      merged.push(right[rightIndex]);
+      rightIndex += 1;
+    }
+  }
+
+  while (leftIndex < left.length) {
+    merged.push(left[leftIndex]);
+    leftIndex += 1;
+  }
+  while (rightIndex < right.length) {
+    merged.push(right[rightIndex]);
+    rightIndex += 1;
+  }
+
+  return merged;
 }
 
 class MinHeap {
@@ -120,13 +191,14 @@ class MinHeap {
   }
 }
 
-function makeStep(index, line, messageKey, params, state) {
+function makeStep(index, line, messageKey, params, state, operationCount = 0) {
   return {
     index,
     line,
     messageKey,
     params,
     state: clone(state),
+    operationCount,
   };
 }
 
@@ -212,8 +284,7 @@ function countInversionsByDeadline(schedule) {
 }
 
 function simulateIntervalScheduling(items, algorithmId) {
-  const decorated = decorateIntervals(items);
-  const sortedItems = [...decorated].sort(getIntervalComparator(algorithmId));
+  const metrics = { operations: 0 };
   const optimal = computeIntervalSchedulingOptimal(items);
 
   const state = {
@@ -230,29 +301,39 @@ function simulateIntervalScheduling(items, algorithmId) {
 
   const steps = [];
   let stepIndex = 0;
-  steps.push(makeStep(stepIndex++, null, "step_ready", {}, state));
+  steps.push(makeStep(stepIndex++, null, "step_ready", {}, state, metrics.operations));
+  const decorated = decorateIntervals(items, algorithmId === "fewest-conflicts" ? metrics : null);
+  const sortedItems = mergeSortWithMetrics(decorated, getIntervalComparator(algorithmId), metrics);
   state.isSorted = true;
   steps.push(
     makeStep(stepIndex++, 1, "step_sorted", { count: sortedItems.length }, {
       ...state,
       sortedIds: sortedItems.map((item) => item.id),
-    }),
+    }, metrics.operations),
   );
-  steps.push(makeStep(stepIndex++, 2, "step_initialized", {}, state));
+  addOperations(metrics);
+  steps.push(makeStep(stepIndex++, 2, "step_initialized", {}, state, metrics.operations));
 
   const selectedItems = [];
   for (let index = 0; index < sortedItems.length; index += 1) {
     const item = sortedItems[index];
     state.currentId = item.id;
     state.currentIndex = index;
-    steps.push(makeStep(stepIndex++, 3, "step_consider_interval", { id: item.id }, state));
+    addOperations(metrics);
+    steps.push(makeStep(stepIndex++, 3, "step_consider_interval", { id: item.id }, state, metrics.operations));
 
-    const compatible = selectedItems.length === 0 || selectedItems[selectedItems.length - 1].finish <= item.start;
+    const compatible = isCompatibleWithSelection(item, selectedItems, algorithmId, metrics);
     state.processedIds.push(item.id);
     if (compatible) {
       selectedItems.push(item);
-      state.selectedIds.push(item.id);
-      state.lastFinish = item.finish;
+      if (algorithmId === "fewest-conflicts") {
+        state.selectedIds = getChronologicalSelectionIds(selectedItems);
+        state.lastFinish = null;
+      } else {
+        state.selectedIds.push(item.id);
+        state.lastFinish = item.finish;
+      }
+      addOperations(metrics);
       state.objectiveValue = state.selectedIds.length;
       state.decisions.push({
         id: item.id,
@@ -260,25 +341,38 @@ function simulateIntervalScheduling(items, algorithmId) {
         reasonKey: "reason_compatible",
       });
       steps.push(
-        makeStep(stepIndex++, 5, "step_select_interval", { id: item.id, finish: item.finish }, state),
+        makeStep(
+          stepIndex++,
+          5,
+          algorithmId === "fewest-conflicts" ? "step_select_interval_set" : "step_select_interval",
+          algorithmId === "fewest-conflicts"
+            ? { id: item.id, count: state.selectedIds.length }
+            : { id: item.id, finish: item.finish },
+          state,
+          metrics.operations,
+        ),
       );
     } else {
       state.rejectedIds.push(item.id);
+      addOperations(metrics);
       state.decisions.push({
         id: item.id,
         decision: "rejected",
         reasonKey: "reason_incompatible",
       });
-      steps.push(makeStep(stepIndex++, 6, "step_reject_interval", { id: item.id }, state));
+      steps.push(makeStep(stepIndex++, 6, "step_reject_interval", { id: item.id }, state, metrics.operations));
     }
   }
 
   state.currentId = null;
   state.currentIndex = null;
-  steps.push(makeStep(stepIndex++, null, "step_finished", {}, state));
+  steps.push(makeStep(stepIndex++, null, "step_finished", {}, state, metrics.operations));
 
-  const frontierComparison = state.selectedIds.map((id, index) => {
-    const greedyInterval = selectedItems[index];
+  const displayedSelection = algorithmId === "fewest-conflicts" ? sortIntervalsChronologically(selectedItems) : selectedItems;
+  const displayedSelectionIds = algorithmId === "fewest-conflicts" ? getChronologicalSelectionIds(selectedItems) : state.selectedIds;
+
+  const frontierComparison = displayedSelectionIds.map((id, index) => {
+    const greedyInterval = displayedSelection[index];
     const optimalInterval = optimal.selected[index] ?? null;
     return {
       rank: index + 1,
@@ -296,11 +390,12 @@ function simulateIntervalScheduling(items, algorithmId) {
     items: decorated,
     sortedItems,
     steps,
+    operationTotal: metrics.operations,
     result: {
-      selected: selectedItems,
-      selectedIds: state.selectedIds,
+      selected: displayedSelection,
+      selectedIds: displayedSelectionIds,
       rejectedIds: state.rejectedIds,
-      objectiveValue: state.selectedIds.length,
+      objectiveValue: displayedSelection.length,
     },
     optimal: {
       objectiveValue: optimal.count,
@@ -309,18 +404,18 @@ function simulateIntervalScheduling(items, algorithmId) {
     proof: {
       style: "staysAhead",
       frontierComparison,
-      greedyIds: state.selectedIds,
+      greedyIds: displayedSelectionIds,
       optimalIds: optimal.selectedIds,
     },
   };
 }
 
 function runPartitioningCore(items, algorithmId, recordSteps) {
-  const decorated = decorateIntervals(items);
-  const sortedItems = [...decorated].sort(getIntervalComparator(algorithmId));
-  const depthInfo = computeDepthWithWitness(decorated);
-
-  const roomHeap = new MinHeap((a, b) => a.finish - b.finish || a.roomId - b.roomId);
+  const metrics = { operations: 0 };
+  const roomHeap = new MinHeap((a, b) => {
+    addOperations(metrics);
+    return a.finish - b.finish || a.roomId - b.roomId;
+  });
   const rooms = [];
   const state = {
     rooms: [],
@@ -335,15 +430,21 @@ function runPartitioningCore(items, algorithmId, recordSteps) {
   const steps = [];
   let stepIndex = 0;
   if (recordSteps) {
-    steps.push(makeStep(stepIndex++, null, "step_ready", {}, state));
+    steps.push(makeStep(stepIndex++, null, "step_ready", {}, state, metrics.operations));
+  }
+  const decorated = decorateIntervals(items, algorithmId === "fewest-conflicts" ? metrics : null);
+  const sortedItems = mergeSortWithMetrics(decorated, getIntervalComparator(algorithmId), metrics);
+  const depthInfo = computeDepthWithWitness(decorated);
+  if (recordSteps) {
     state.isSorted = true;
     steps.push(
       makeStep(stepIndex++, 1, "step_sorted", { count: sortedItems.length }, {
         ...state,
         sortedIds: sortedItems.map((item) => item.id),
-      }),
+      }, metrics.operations),
     );
-    steps.push(makeStep(stepIndex++, 2, "step_initialized", {}, state));
+    addOperations(metrics);
+    steps.push(makeStep(stepIndex++, 2, "step_initialized", {}, state, metrics.operations));
   }
 
   let nextRoomId = 1;
@@ -353,10 +454,12 @@ function runPartitioningCore(items, algorithmId, recordSteps) {
     state.currentIndex = index;
 
     if (recordSteps) {
-      steps.push(makeStep(stepIndex++, 3, "step_consider_interval", { id: item.id }, state));
+      addOperations(metrics);
+      steps.push(makeStep(stepIndex++, 3, "step_consider_interval", { id: item.id }, state, metrics.operations));
     }
 
     const earliestRoom = roomHeap.peek();
+    addOperations(metrics);
     if (earliestRoom && earliestRoom.finish <= item.start) {
       const room = roomHeap.pop();
       room.finish = item.finish;
@@ -369,6 +472,7 @@ function runPartitioningCore(items, algorithmId, recordSteps) {
         roomId: room.roomId,
         decision: "reuse",
       });
+      addOperations(metrics);
       state.rooms = rooms.map((currentRoom) => ({
         roomId: currentRoom.roomId,
         finish: currentRoom.finish,
@@ -376,7 +480,7 @@ function runPartitioningCore(items, algorithmId, recordSteps) {
       }));
       if (recordSteps) {
         steps.push(
-          makeStep(stepIndex++, 5, "step_assign_existing_room", { id: item.id, roomId: room.roomId }, state),
+          makeStep(stepIndex++, 5, "step_assign_existing_room", { id: item.id, roomId: room.roomId }, state, metrics.operations),
         );
       }
     } else {
@@ -395,13 +499,14 @@ function runPartitioningCore(items, algorithmId, recordSteps) {
         roomId: room.roomId,
         decision: "new-room",
       });
+      addOperations(metrics);
       state.rooms = rooms.map((currentRoom) => ({
         roomId: currentRoom.roomId,
         finish: currentRoom.finish,
         items: currentRoom.items,
       }));
       if (recordSteps) {
-        steps.push(makeStep(stepIndex++, 6, "step_open_room", { id: item.id, roomId: room.roomId }, state));
+        steps.push(makeStep(stepIndex++, 6, "step_open_room", { id: item.id, roomId: room.roomId }, state, metrics.operations));
       }
     }
   }
@@ -409,7 +514,7 @@ function runPartitioningCore(items, algorithmId, recordSteps) {
   if (recordSteps) {
     state.currentId = null;
     state.currentIndex = null;
-    steps.push(makeStep(stepIndex++, null, "step_finished", {}, state));
+    steps.push(makeStep(stepIndex++, null, "step_finished", {}, state, metrics.operations));
   }
 
   return {
@@ -418,6 +523,7 @@ function runPartitioningCore(items, algorithmId, recordSteps) {
     items: decorated,
     sortedItems,
     steps,
+    operationTotal: metrics.operations,
     result: {
       rooms: rooms.map((room) => ({
         roomId: room.roomId,
@@ -443,8 +549,7 @@ function simulatePartitioning(items, algorithmId) {
 }
 
 function runLatenessCore(items, algorithmId, recordSteps) {
-  const decorated = decorateJobs(items);
-  const sortedItems = [...decorated].sort(getLatenessComparator(algorithmId));
+  const metrics = { operations: 0 };
   const state = {
     scheduled: [],
     currentId: null,
@@ -459,15 +564,20 @@ function runLatenessCore(items, algorithmId, recordSteps) {
   const steps = [];
   let stepIndex = 0;
   if (recordSteps) {
-    steps.push(makeStep(stepIndex++, null, "step_ready", {}, state));
+    steps.push(makeStep(stepIndex++, null, "step_ready", {}, state, metrics.operations));
+  }
+  const decorated = decorateJobs(items);
+  const sortedItems = mergeSortWithMetrics(decorated, getLatenessComparator(algorithmId), metrics);
+  if (recordSteps) {
     state.isSorted = true;
     steps.push(
       makeStep(stepIndex++, 1, "step_sorted", { count: sortedItems.length }, {
         ...state,
         sortedIds: sortedItems.map((item) => item.id),
-      }),
+      }, metrics.operations),
     );
-    steps.push(makeStep(stepIndex++, 2, "step_initialized", {}, state));
+    addOperations(metrics, 2);
+    steps.push(makeStep(stepIndex++, 2, "step_initialized", {}, state, metrics.operations));
   }
 
   for (let index = 0; index < sortedItems.length; index += 1) {
@@ -475,7 +585,8 @@ function runLatenessCore(items, algorithmId, recordSteps) {
     state.currentId = item.id;
     state.currentIndex = index;
     if (recordSteps) {
-      steps.push(makeStep(stepIndex++, 3, "step_consider_job", { id: item.id }, state));
+      addOperations(metrics);
+      steps.push(makeStep(stepIndex++, 3, "step_consider_job", { id: item.id }, state, metrics.operations));
     }
 
     const start = state.time;
@@ -498,6 +609,7 @@ function runLatenessCore(items, algorithmId, recordSteps) {
       maxLateness: state.maxLateness,
     });
 
+    addOperations(metrics, 4);
     if (recordSteps) {
       steps.push(
         makeStep(stepIndex++, 6, "step_schedule_job", {
@@ -505,7 +617,7 @@ function runLatenessCore(items, algorithmId, recordSteps) {
           start,
           finish,
           lateness,
-        }, state),
+        }, state, metrics.operations),
       );
     }
   }
@@ -513,7 +625,7 @@ function runLatenessCore(items, algorithmId, recordSteps) {
   if (recordSteps) {
     state.currentId = null;
     state.currentIndex = null;
-    steps.push(makeStep(stepIndex++, null, "step_finished", {}, state));
+    steps.push(makeStep(stepIndex++, null, "step_finished", {}, state, metrics.operations));
   }
 
   const inversionInfo = countInversionsByDeadline(state.scheduled);
@@ -523,6 +635,7 @@ function runLatenessCore(items, algorithmId, recordSteps) {
     items: decorated,
     sortedItems,
     steps,
+    operationTotal: metrics.operations,
     result: {
       schedule: state.scheduled,
       objectiveValue: state.maxLateness,

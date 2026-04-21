@@ -105,6 +105,19 @@ const state = {
   autoRunHandle: null,
   autoRunning: false,
   speed: 1,
+  board: {
+    zoom: {
+      interval: 1,
+      graph: 1,
+    },
+    offsets: {
+      intervalScheduling: {},
+      intervalPartitioning: {},
+      minimizeLateness: {},
+    },
+    drag: null,
+    resizeFrame: null,
+  },
   statusKey: "banner_preset_loaded",
   statusParams: {},
 };
@@ -200,6 +213,146 @@ function getCurrentProblem() {
 
 function getCurrentAlgorithm() {
   return getAlgorithm(state.problemId, state.algorithmId);
+}
+
+function getBoardOffset(problemId, itemId) {
+  return state.board.offsets[problemId]?.[itemId] ?? { x: 0, y: 0 };
+}
+
+function resetBoardOffsets(problemId = state.problemId) {
+  state.board.offsets[problemId] = {};
+}
+
+function scheduleBoardSync() {
+  if (state.board.resizeFrame) {
+    window.cancelAnimationFrame(state.board.resizeFrame);
+  }
+  state.board.resizeFrame = window.requestAnimationFrame(() => {
+    state.board.resizeFrame = null;
+    const stage = elements.viewHost.querySelector("[data-board-stage]");
+    const svg = elements.viewHost.querySelector("[data-board-svg]");
+    const zoomReadout = elements.viewHost.querySelector("[data-zoom-readout]");
+    if (!stage || !svg) {
+      return;
+    }
+
+    const viewBox = svg.viewBox?.baseVal;
+    if (!viewBox || !stage.clientWidth || !stage.clientHeight) {
+      return;
+    }
+
+    const fitScale = Math.min(stage.clientWidth / viewBox.width, stage.clientHeight / viewBox.height);
+    const userZoom = state.board.zoom[state.viewMode] ?? 1;
+    const appliedScale = Math.max(0.1, fitScale * userZoom);
+
+    svg.style.width = `${viewBox.width * appliedScale}px`;
+    svg.style.height = `${viewBox.height * appliedScale}px`;
+
+    if (zoomReadout) {
+      zoomReadout.textContent = `${Math.round(userZoom * 100)}%`;
+    }
+  });
+}
+
+function updateBoardOffset(problemId, itemId, axis, value) {
+  const current = getBoardOffset(problemId, itemId);
+  state.board.offsets[problemId] = {
+    ...state.board.offsets[problemId],
+    [itemId]: {
+      x: axis === "x" ? value : current.x ?? 0,
+      y: axis === "y" ? value : current.y ?? 0,
+    },
+  };
+}
+
+function setBoardZoom(nextZoom) {
+  if (!["interval", "graph"].includes(state.viewMode)) {
+    return;
+  }
+  state.board.zoom[state.viewMode] = Math.max(0.6, Math.min(2.6, nextZoom));
+  render();
+}
+
+function handleBoardZoom(action) {
+  const currentZoom = state.board.zoom[state.viewMode] ?? 1;
+  if (action === "in") {
+    setBoardZoom(currentZoom + 0.2);
+    return;
+  }
+  if (action === "out") {
+    setBoardZoom(currentZoom - 0.2);
+    return;
+  }
+  if (action === "reset") {
+    setBoardZoom(1);
+  }
+}
+
+function stopBoardDrag() {
+  if (!state.board.drag) {
+    return;
+  }
+  document.body.classList.remove("is-dragging-board");
+  window.removeEventListener("pointermove", onBoardPointerMove);
+  window.removeEventListener("pointerup", stopBoardDrag);
+  window.removeEventListener("pointercancel", stopBoardDrag);
+  state.board.drag = null;
+}
+
+function onBoardPointerMove(event) {
+  if (!state.board.drag) {
+    return;
+  }
+
+  const drag = state.board.drag;
+  const deltaPixels = drag.axis === "x" ? event.clientX - drag.startClient : event.clientY - drag.startClient;
+  const deltaUnits = deltaPixels * drag.unitsPerPixel;
+  const nextValue = Math.max(drag.minOffset, Math.min(drag.maxOffset, drag.startOffset + deltaUnits));
+  updateBoardOffset(drag.problemId, drag.itemId, drag.axis, nextValue);
+  render();
+}
+
+function beginBoardDrag(event) {
+  const handle = event.target.closest("[data-drag-item]");
+  if (!handle || event.button !== 0) {
+    return;
+  }
+
+  const svg = handle.closest("[data-board-svg]");
+  if (!svg) {
+    return;
+  }
+
+  const axis = handle.dataset.dragAxis;
+  const problemId = handle.dataset.problemId;
+  const itemId = handle.dataset.itemId;
+  if (!axis || !problemId || !itemId) {
+    return;
+  }
+
+  const svgRect = svg.getBoundingClientRect();
+  const viewBox = svg.viewBox?.baseVal;
+  if (!viewBox || !svgRect.width || !svgRect.height) {
+    return;
+  }
+
+  const currentOffset = getBoardOffset(problemId, itemId);
+  state.board.drag = {
+    axis,
+    problemId,
+    itemId,
+    startClient: axis === "x" ? event.clientX : event.clientY,
+    startOffset: axis === "x" ? currentOffset.x ?? 0 : currentOffset.y ?? 0,
+    unitsPerPixel: axis === "x" ? viewBox.width / svgRect.width : viewBox.height / svgRect.height,
+    minOffset: Number(handle.dataset.minOffset ?? -Infinity),
+    maxOffset: Number(handle.dataset.maxOffset ?? Infinity),
+  };
+
+  document.body.classList.add("is-dragging-board");
+  event.preventDefault();
+  window.addEventListener("pointermove", onBoardPointerMove);
+  window.addEventListener("pointerup", stopBoardDrag);
+  window.addEventListener("pointercancel", stopBoardDrag);
 }
 
 function updateStaticText() {
@@ -343,15 +496,18 @@ function render() {
   });
   elements.autoBtn.textContent = t(state.autoRunning ? "stop_btn" : "auto_btn");
   elements.viewTitle.textContent = t(`view_title_${state.viewMode}`);
-  elements.stepCounterValue.textContent = `${state.stepIndex + 1} / ${state.simulation.steps.length}`;
+  const currentOperationCount = currentStep?.operationCount ?? state.simulation.operationTotal ?? 0;
+  const totalOperationCount = state.simulation.operationTotal ?? currentOperationCount;
+  elements.stepCounterValue.textContent = `${currentOperationCount} / ${totalOperationCount}`;
   elements.summaryCards.innerHTML = renderSummaryCards(problem, algorithm, preset, state.simulation, t);
   elements.statusBanner.textContent = t(state.statusKey, state.statusParams);
   elements.stateSummary.innerHTML = renderStateSummary(state.problemId, state.simulation, currentStep, t);
   elements.instanceTable.innerHTML = renderInstanceTable(state.problemId, state.simulation, currentStep, t);
   elements.stepLog.innerHTML = renderStepLog(state.simulation.steps, state.stepIndex, t);
-  elements.viewHost.innerHTML = renderView(state.viewMode, state.problemId, algorithm, state.simulation, currentStep, t);
+  elements.viewHost.innerHTML = renderView(state.viewMode, state.problemId, algorithm, state.simulation, currentStep, t, state.board);
   updateLiveBadge();
   initResizableHandles(document);
+  scheduleBoardSync();
 }
 
 function stopAutoRun(silent = false) {
@@ -388,10 +544,12 @@ function queueAutoRun() {
 
 function switchProblem(problemId) {
   stopAutoRun(true);
+  stopBoardDrag();
   state.problemId = problemId;
   state.algorithmId = ALGORITHMS[problemId][0].id;
   state.presetId = getDefaultPresetId(problemId);
   state.items = cloneData(getPreset(problemId, state.presetId)?.items ?? []);
+  resetBoardOffsets(problemId);
   refreshSimulation(true);
   setStatus("banner_preset_loaded");
   render();
@@ -399,6 +557,7 @@ function switchProblem(problemId) {
 
 function switchAlgorithm(algorithmId) {
   stopAutoRun(true);
+  stopBoardDrag();
   state.algorithmId = algorithmId;
   refreshSimulation(true);
   setStatus("banner_reset");
@@ -407,8 +566,10 @@ function switchAlgorithm(algorithmId) {
 
 function switchPreset(presetId) {
   stopAutoRun(true);
+  stopBoardDrag();
   state.presetId = presetId;
   state.items = cloneData(getPreset(state.problemId, presetId)?.items ?? []);
+  resetBoardOffsets();
   refreshSimulation(true);
   setStatus("banner_preset_loaded");
   render();
@@ -416,10 +577,12 @@ function switchPreset(presetId) {
 
 function generateRandom() {
   stopAutoRun(true);
+  stopBoardDrag();
   const size = clampRandomSize(Number(elements.randomSizeInput.value));
   elements.randomSizeInput.value = String(size);
   state.presetId = "";
   state.items = buildRandomInstance(state.problemId, size);
+  resetBoardOffsets();
   refreshSimulation(true);
   setStatus("banner_random_loaded");
   render();
@@ -431,9 +594,11 @@ async function importCsv(file) {
   }
   try {
     stopAutoRun(true);
+    stopBoardDrag();
     const text = await file.text();
     state.items = parseCsvText(state.problemId, text);
     state.presetId = "";
+    resetBoardOffsets();
     refreshSimulation(true);
     setStatus("banner_csv_loaded");
   } catch (error) {
@@ -538,6 +703,15 @@ function bindEvents() {
     });
   });
 
+  elements.viewHost.addEventListener("click", (event) => {
+    const zoomAction = event.target.closest("[data-zoom-action]")?.dataset.zoomAction;
+    if (zoomAction) {
+      handleBoardZoom(zoomAction);
+    }
+  });
+
+  elements.viewHost.addEventListener("pointerdown", beginBoardDrag);
+
   elements.detailTabs.forEach((tab) => {
     tab.addEventListener("click", () => {
       state.detailMode = tab.dataset.detail;
@@ -567,10 +741,13 @@ function bindEvents() {
 
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      stopBoardDrag();
       closeModal(elements.helpOverlay);
       closeModal(elements.referencesOverlay);
     }
   });
+
+  window.addEventListener("resize", scheduleBoardSync);
 }
 
 function init() {
