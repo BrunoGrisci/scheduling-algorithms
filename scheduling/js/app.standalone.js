@@ -3188,7 +3188,7 @@
       const rowHeight = 56;
       const padding = 52;
       const bounds = buildTimelineBounds("intervalScheduling", simulation, step.state);
-      const rows = [...simulation.items].sort((a, b) => a.start - b.start || a.finish - b.finish || a.id.localeCompare(b.id));
+      const rows = getDisplayItems(simulation, step.state);
       const height = rows.length * rowHeight + 84;
       const layoutKey = rows.map((item) => item.id).join("|");
       const bars = rows
