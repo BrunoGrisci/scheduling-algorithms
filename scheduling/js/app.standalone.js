@@ -2556,6 +2556,10 @@
       return String(value);
     }
     
+    function isIntegerLike(value) {
+      return typeof value === "number" && Number.isFinite(value) && Math.abs(value - Math.round(value)) < 1e-9;
+    }
+    
     function getDisplayItems(simulation, stepState) {
       return stepState?.isSorted ? simulation.sortedItems : simulation.items;
     }
@@ -2819,11 +2823,14 @@
       if (problemId === "minimizeLateness") {
         const schedule = stepState?.scheduled ?? [];
         const finalSchedule = schedule.length > 0 ? schedule : simulation.result.schedule ?? [];
-        const maxDeadline = Math.max(...simulation.items.map((item) => item.deadline), 0);
-        const maxFinish = Math.max(...finalSchedule.map((item) => item.finish), 0);
+        const deadlineValues = simulation.items.map((item) => item.deadline);
+        const finishValues = finalSchedule.map((item) => item.finish);
+        const maxDeadline = Math.max(...deadlineValues, 0);
+        const maxFinish = Math.max(...finishValues, 0);
         return {
           min: 0,
           max: Math.max(maxDeadline, maxFinish, 1),
+          preferIntegerTicks: [...deadlineValues, ...finishValues].every(isIntegerLike),
         };
       }
     
@@ -2832,6 +2839,7 @@
       return {
         min: Math.min(...starts, 0),
         max: Math.max(...finishes, 1),
+        preferIntegerTicks: [...starts, ...finishes].every(isIntegerLike),
       };
     }
     
@@ -2854,6 +2862,48 @@
         return top + size;
       }
       return top + size - ((value - bounds.min) / (bounds.max - bounds.min)) * size;
+    }
+    
+    function getAxisTickValues(bounds, tickCount = 8) {
+      if (!bounds.preferIntegerTicks) {
+        return Array.from({ length: tickCount + 1 }, (_, index) => bounds.min + ((bounds.max - bounds.min) * index) / tickCount);
+      }
+    
+      const min = Math.round(bounds.min);
+      const max = Math.round(bounds.max);
+      if (max <= min) {
+        return [min];
+      }
+    
+      const maxLabels = Math.max(tickCount + 2, 3);
+      const candidateSteps = [];
+      for (let magnitude = 1; magnitude <= Math.max(1, max - min) * 10; magnitude *= 10) {
+        candidateSteps.push(magnitude, magnitude * 2, magnitude * 5);
+      }
+    
+      let step = 1;
+      for (const candidate of candidateSteps) {
+        const start = Math.ceil(min / candidate) * candidate;
+        const end = Math.floor(max / candidate) * candidate;
+        const count = end >= start ? Math.floor((end - start) / candidate) + 1 : 0;
+        const total = count + (start !== min ? 1 : 0) + (end !== max ? 1 : 0);
+        if (total <= maxLabels) {
+          step = candidate;
+          break;
+        }
+      }
+    
+      const ticks = [];
+      for (let value = Math.ceil(min / step) * step; value <= Math.floor(max / step) * step; value += step) {
+        ticks.push(Math.round(value));
+      }
+      if (ticks[0] !== min) {
+        ticks.unshift(min);
+      }
+      if (ticks[ticks.length - 1] !== max) {
+        ticks.push(max);
+      }
+      return [...new Set(ticks)];
     }
     
     function getBoardZoom(boardState, viewMode) {
@@ -2929,8 +2979,7 @@
     function buildAxis(bounds, width, height, tickCount = 8) {
       const padding = 52;
       const ticks = [];
-      for (let index = 0; index <= tickCount; index += 1) {
-        const value = bounds.min + ((bounds.max - bounds.min) * index) / tickCount;
+      for (const value of getAxisTickValues(bounds, tickCount)) {
         const x = xScale(value, bounds, width, padding);
         ticks.push(`
           <line x1="${x}" y1="${height - 28}" x2="${x}" y2="28" class="axis-grid"></line>
@@ -2972,8 +3021,7 @@
     
     function buildSquareTimeAxes(bounds, plotBox, t, tickCount = 8) {
       const ticks = [];
-      for (let index = 0; index <= tickCount; index += 1) {
-        const value = bounds.min + ((bounds.max - bounds.min) * index) / tickCount;
+      for (const value of getAxisTickValues(bounds, tickCount)) {
         const x = scaleWithin(value, bounds, plotBox.left, plotBox.left + plotBox.size);
         const y = yScaleUp(value, bounds, plotBox.top, plotBox.size);
         ticks.push(`
@@ -3064,12 +3112,12 @@
               const status = getStatusForItem(problemId, item.id, stepState);
               const extra =
                 problemId === "minimizeLateness"
-                  ? `${t("header_duration_short")}: ${item.duration} · ${t("header_deadline_short")}: ${item.deadline}`
-                  : `${t("header_start_short")}: ${item.start} · ${t("header_finish_short")}: ${item.finish}`;
+                  ? `${t("header_duration_short")}: ${formatValue(item.duration)} · ${t("header_deadline_short")}: ${formatValue(item.deadline)}`
+                  : `${t("header_start_short")}: ${formatValue(item.start)} · ${t("header_finish_short")}: ${formatValue(item.finish)}`;
               const meta =
                 problemId === "minimizeLateness"
-                  ? `${t("header_slack_short")}: ${item.slack}`
-                  : `${t("header_length_short")}: ${item.duration} · ${t("header_conflicts_short")}: ${item.conflicts}`;
+                  ? `${t("header_slack_short")}: ${formatValue(item.slack)}`
+                  : `${t("header_length_short")}: ${formatValue(item.duration)} · ${t("header_conflicts_short")}: ${formatValue(item.conflicts)}`;
               return `
                 <article class="item-card status-${status}">
                   <div class="item-card-head">
@@ -3127,8 +3175,8 @@
                 (item) => `
                   <div class="schedule-row">
                     <strong>${escapeHtml(item.id)}</strong>
-                    <span>[${item.start}, ${item.finish}]</span>
-                    <span>${t("header_lateness_short")}: ${item.lateness}</span>
+                    <span>[${formatValue(item.start)}, ${formatValue(item.finish)}]</span>
+                    <span>${t("header_lateness_short")}: ${formatValue(item.lateness)}</span>
                   </div>
                 `,
               )
@@ -3328,7 +3376,7 @@
           return `
             <g class="timeline-row status-${status}">
               <line x1="${deadlineX}" y1="${y - 10}" x2="${deadlineX}" y2="${y + 26}" class="deadline-line"></line>
-              <text x="${deadlineX}" y="${y - 16}" class="axis-label" text-anchor="middle">${escapeHtml(item.id)}: d=${item.deadline}</text>
+              <text x="${deadlineX}" y="${y - 16}" class="axis-label" text-anchor="middle">${escapeHtml(item.id)}: d=${formatValue(item.deadline)}</text>
             </g>
             <g
               class="timeline-row draggable-item drag-x status-${status}"
@@ -3742,7 +3790,7 @@
                   <g>
                     <circle cx="${node.x}" cy="${node.y}" r="26" class="graph-node status-${node.status}"></circle>
                     <text x="${node.x}" y="${node.y + 5}" text-anchor="middle" class="graph-label">${escapeHtml(node.id)}</text>
-                    <text x="${node.x}" y="${node.y + 48}" text-anchor="middle" class="axis-label">d=${node.deadline}</text>
+                    <text x="${node.x}" y="${node.y + 48}" text-anchor="middle" class="axis-label">d=${formatValue(node.deadline)}</text>
                   </g>
                 `,
               )
@@ -4053,11 +4101,11 @@
                   return `
                     <tr class="status-${status}">
                       <td>${escapeHtml(item.id)}</td>
-                      <td>${item.duration}</td>
-                      <td>${item.deadline}</td>
-                      <td>${item.slack}</td>
-                      <td>${scheduled ? `[${scheduled.start}, ${scheduled.finish}]` : "—"}</td>
-                      <td>${scheduled ? scheduled.lateness : "—"}</td>
+                      <td>${formatValue(item.duration)}</td>
+                      <td>${formatValue(item.deadline)}</td>
+                      <td>${formatValue(item.slack)}</td>
+                      <td>${scheduled ? `[${formatValue(scheduled.start)}, ${formatValue(scheduled.finish)}]` : "—"}</td>
+                      <td>${scheduled ? formatValue(scheduled.lateness) : "—"}</td>
                       <td>${t(getStatusLabelKey(status))}</td>
                     </tr>
                   `;
@@ -4088,10 +4136,10 @@
                 return `
                   <tr class="status-${status}">
                     <td>${escapeHtml(item.id)}</td>
-                    <td>${item.start}</td>
-                    <td>${item.finish}</td>
-                    <td>${item.duration}</td>
-                    <td>${item.conflicts}</td>
+                    <td>${formatValue(item.start)}</td>
+                    <td>${formatValue(item.finish)}</td>
+                    <td>${formatValue(item.duration)}</td>
+                    <td>${formatValue(item.conflicts)}</td>
                     ${problemId === "intervalPartitioning" ? `<td>${formatValue(roomAssignments.get(item.id))}</td>` : ""}
                     <td>${t(getStatusLabelKey(status))}</td>
                   </tr>
