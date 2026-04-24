@@ -537,10 +537,15 @@ function buildDuplicateTimeJitter(items) {
   return jitterById;
 }
 
+function usesIntervalSetCompatibilitySummary(algorithmId) {
+  return algorithmId === "fewest-conflicts" || algorithmId === "shortest-interval";
+}
+
 function renderDataChips(problemId, simulation, stepState, t) {
   if (problemId === "intervalScheduling") {
-    const thirdLabel = simulation.algorithmId === "fewest-conflicts" ? t("state_considered") : t("state_last_finish");
-    const thirdValue = simulation.algorithmId === "fewest-conflicts"
+    const setCompatibility = usesIntervalSetCompatibilitySummary(simulation.algorithmId);
+    const thirdLabel = setCompatibility ? t("state_considered") : t("state_last_finish");
+    const thirdValue = setCompatibility
       ? stepState.processedIds?.length ?? 0
       : formatValue(stepState.lastFinish);
     return `
@@ -1476,8 +1481,9 @@ export function renderStateSummary(problemId, simulation, step, t) {
   `;
 
   if (problemId === "intervalScheduling") {
-    const thirdLabel = simulation.algorithmId === "fewest-conflicts" ? t("state_considered") : t("state_last_finish");
-    const thirdValue = simulation.algorithmId === "fewest-conflicts"
+    const setCompatibility = usesIntervalSetCompatibilitySummary(simulation.algorithmId);
+    const thirdLabel = setCompatibility ? t("state_considered") : t("state_last_finish");
+    const thirdValue = setCompatibility
       ? step.state.processedIds?.length ?? 0
       : formatValue(step.state.lastFinish);
     items += `

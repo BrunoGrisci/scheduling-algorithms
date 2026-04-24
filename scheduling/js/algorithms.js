@@ -72,13 +72,21 @@ function getChronologicalSelectionIds(selectedItems) {
   return sortIntervalsChronologically(selectedItems).map((item) => item.id);
 }
 
+function usesFullSetCompatibility(algorithmId) {
+  return algorithmId === "fewest-conflicts" || algorithmId === "shortest-interval";
+}
+
+function usesHeapPartitioningAssignment(algorithmId) {
+  return algorithmId !== "shortest-interval";
+}
+
 function isCompatibleWithSelection(item, selectedItems, algorithmId, metrics = null) {
   if (selectedItems.length === 0) {
     addOperations(metrics);
     return true;
   }
 
-  if (algorithmId === "fewest-conflicts") {
+  if (usesFullSetCompatibility(algorithmId)) {
     for (const selectedItem of selectedItems) {
       addOperations(metrics);
       if (intervalsOverlap(selectedItem, item)) {
@@ -90,6 +98,36 @@ function isCompatibleWithSelection(item, selectedItems, algorithmId, metrics = n
 
   addOperations(metrics);
   return selectedItems[selectedItems.length - 1].finish <= item.start;
+}
+
+function isCompatibleWithRoom(item, room, metrics = null) {
+  for (const roomItem of room.items) {
+    addOperations(metrics);
+    if (intervalsOverlap(roomItem, item)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function insertIntoRoomChronologically(room, item, metrics = null) {
+  let insertIndex = 0;
+  while (insertIndex < room.items.length) {
+    const current = room.items[insertIndex];
+    addOperations(metrics);
+    if (
+      item.start < current.start ||
+      (item.start === current.start && (
+        item.finish < current.finish ||
+        (item.finish === current.finish && numericIdCompare(item, current) < 0)
+      ))
+    ) {
+      break;
+    }
+    insertIndex += 1;
+  }
+  room.items.splice(insertIndex, 0, item);
+  room.finish = room.items[room.items.length - 1].finish;
 }
 
 function getLatenessComparator(algorithmId) {
@@ -394,6 +432,7 @@ function countInversionsByDeadline(schedule) {
 function simulateIntervalScheduling(items, algorithmId) {
   const metrics = { operations: 0 };
   const optimal = computeIntervalSchedulingOptimal(items);
+  const setCompatibility = usesFullSetCompatibility(algorithmId);
 
   const state = {
     selectedIds: [],
@@ -434,7 +473,7 @@ function simulateIntervalScheduling(items, algorithmId) {
     state.processedIds.push(item.id);
     if (compatible) {
       selectedItems.push(item);
-      if (algorithmId === "fewest-conflicts") {
+      if (setCompatibility) {
         state.selectedIds = getChronologicalSelectionIds(selectedItems);
         state.lastFinish = null;
       } else {
@@ -452,8 +491,8 @@ function simulateIntervalScheduling(items, algorithmId) {
         makeStep(
           stepIndex++,
           5,
-          algorithmId === "fewest-conflicts" ? "step_select_interval_set" : "step_select_interval",
-          algorithmId === "fewest-conflicts"
+          setCompatibility ? "step_select_interval_set" : "step_select_interval",
+          setCompatibility
             ? { id: item.id, count: state.selectedIds.length }
             : { id: item.id, finish: item.finish },
           state,
@@ -476,8 +515,8 @@ function simulateIntervalScheduling(items, algorithmId) {
   state.currentIndex = null;
   steps.push(makeStep(stepIndex++, null, "step_finished", {}, state, metrics.operations));
 
-  const displayedSelection = algorithmId === "fewest-conflicts" ? sortIntervalsChronologically(selectedItems) : selectedItems;
-  const displayedSelectionIds = algorithmId === "fewest-conflicts" ? getChronologicalSelectionIds(selectedItems) : state.selectedIds;
+  const displayedSelection = setCompatibility ? sortIntervalsChronologically(selectedItems) : selectedItems;
+  const displayedSelectionIds = setCompatibility ? getChronologicalSelectionIds(selectedItems) : state.selectedIds;
 
   const frontierComparison = displayedSelectionIds.map((id, index) => {
     const greedyInterval = displayedSelection[index];
@@ -520,6 +559,7 @@ function simulateIntervalScheduling(items, algorithmId) {
 
 function runPartitioningCore(items, algorithmId, recordSteps) {
   const metrics = { operations: 0 };
+  const useHeapAssignment = usesHeapPartitioningAssignment(algorithmId);
   const roomHeap = new MinHeap((a, b) => {
     addOperations(metrics);
     return a.finish - b.finish || a.roomId - b.roomId;
@@ -566,13 +606,30 @@ function runPartitioningCore(items, algorithmId, recordSteps) {
       steps.push(makeStep(stepIndex++, 3, "step_consider_interval", { id: item.id }, state, metrics.operations));
     }
 
-    const earliestRoom = roomHeap.peek();
-    addOperations(metrics);
-    if (earliestRoom && earliestRoom.finish <= item.start) {
-      const room = roomHeap.pop();
-      room.finish = item.finish;
-      room.items.push(item);
-      roomHeap.push(room);
+    let room = null;
+    if (useHeapAssignment) {
+      const earliestRoom = roomHeap.peek();
+      addOperations(metrics);
+      if (earliestRoom && earliestRoom.finish <= item.start) {
+        room = roomHeap.pop();
+      }
+    } else {
+      for (const currentRoom of rooms) {
+        if (isCompatibleWithRoom(item, currentRoom, metrics)) {
+          room = currentRoom;
+          break;
+        }
+      }
+    }
+
+    if (room) {
+      if (useHeapAssignment) {
+        room.finish = item.finish;
+        room.items.push(item);
+        roomHeap.push(room);
+      } else {
+        insertIntoRoomChronologically(room, item, metrics);
+      }
       state.assignedIds.push(item.id);
       state.objectiveValue = rooms.length;
       state.decisions.push({
@@ -599,7 +656,9 @@ function runPartitioningCore(items, algorithmId, recordSteps) {
       };
       nextRoomId += 1;
       rooms.push(room);
-      roomHeap.push(room);
+      if (useHeapAssignment) {
+        roomHeap.push(room);
+      }
       state.assignedIds.push(item.id);
       state.objectiveValue = rooms.length;
       state.decisions.push({

@@ -34,6 +34,21 @@ const schedShortFail = simulateProblem(
 assert.equal(schedShortFail.result.objectiveValue, 1);
 assert.equal(schedShortFail.optimal.objectiveValue, 2);
 
+const schedShortEarlierCompat = simulateProblem(
+  "intervalScheduling",
+  "shortest-interval",
+  [
+    { id: "A", start: 8, finish: 11 },
+    { id: "B", start: 8, finish: 12 },
+    { id: "C", start: 6, finish: 10 },
+    { id: "D", start: 2, finish: 6 },
+    { id: "E", start: 7, finish: 8 },
+  ],
+);
+assert.equal(schedShortEarlierCompat.result.objectiveValue, 3);
+assert.deepEqual(schedShortEarlierCompat.result.selectedIds, ["D", "E", "A"]);
+assert.equal(schedShortEarlierCompat.optimal.objectiveValue, 3);
+
 const schedConflictFail = simulateProblem(
   "intervalScheduling",
   "fewest-conflicts",
@@ -66,6 +81,18 @@ const partitionShortestFail = simulateProblem(
 );
 assert.equal(partitionShortestFail.result.objectiveValue, 3);
 assert.equal(partitionShortestFail.optimal.objectiveValue, 2);
+
+const partitionShortestEarlierCompat = simulateProblem(
+  "intervalPartitioning",
+  "shortest-interval",
+  [
+    { id: "A", start: 10, finish: 11 },
+    { id: "B", start: 0, finish: 5 },
+    { id: "C", start: 6, finish: 7 },
+  ],
+);
+assert.equal(partitionShortestEarlierCompat.result.objectiveValue, 1);
+assert.equal(partitionShortestEarlierCompat.optimal.objectiveValue, 1);
 
 const partitionConflictFail = simulateProblem(
   "intervalPartitioning",
